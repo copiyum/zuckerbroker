@@ -5,8 +5,10 @@ fb-profile/
 raw.json
 listings.db
 images/
-groups.txt          # your real target groups — keep private (groups.txt.example is tracked)
-skills-lock.json    # from the `skills` installer
+# your real target groups — keep private (groups.txt.example stays tracked)
+groups.txt
+# from the `skills` installer
+skills-lock.json
 
 # secrets
 .env
