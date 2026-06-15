@@ -54,7 +54,7 @@ _EXTRACT_JS = r"""
 
 
 def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
-           headless: bool = False) -> int:
+           headless: bool = False, login_wait: float = 120) -> int:
     """Scroll each group for `minutes`, collect posts, dedup within run, write out_path.
     Returns number of posts written. Requires: playwright install chromium."""
     from playwright.sync_api import sync_playwright
@@ -64,10 +64,16 @@ def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
         ctx = p.chromium.launch_persistent_context(profile_dir, headless=headless)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
 
-        # auth gate: if redirected to login, pause for manual login
+        # auth gate: give the user up to `login_wait` seconds to log in by hand,
+        # proceeding early as soon as we're off the login page.
         page.goto("https://www.facebook.com/", wait_until="domcontentloaded")
+        login_deadline = time.monotonic() + login_wait
+        while "login" in page.url and time.monotonic() < login_deadline:
+            remaining = int(login_deadline - time.monotonic())
+            print(f"not logged in — log in in the browser window ({remaining}s left)", file=sys.stderr)
+            time.sleep(3)
         if "login" in page.url:
-            input("Not logged in. Log in in the browser window, then press Enter...")
+            print("still not logged in after wait; continuing anyway", file=sys.stderr)
 
         for url in groups:
             print(f"scraping {url}", file=sys.stderr)
@@ -110,11 +116,13 @@ def main(argv=None) -> None:
     ap.add_argument("--out", default="raw.json")
     ap.add_argument("--profile", default="fb-profile")
     ap.add_argument("--headless", action="store_true")
+    ap.add_argument("--login-wait", type=float, default=120,
+                    help="seconds to wait for manual login before scraping")
     args = ap.parse_args(argv)
     groups = read_groups(args.groups)
     if not groups:
         sys.exit(f"no group URLs in {args.groups}")
-    scrape(groups, args.minutes, args.profile, args.out, args.headless)
+    scrape(groups, args.minutes, args.profile, args.out, args.headless, args.login_wait)
 
 
 if __name__ == "__main__":
