@@ -16,3 +16,6 @@ __pycache__/
 
 # local-only design docs — never commit
 docs/
+
+# third-party skills (installed locally, not part of the repo)
+.agents/
