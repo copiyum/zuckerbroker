@@ -21,6 +21,11 @@ def parse_post_id(href: str) -> str | None:
     return None
 
 
+def _logged_in(ctx) -> bool:
+    """True once Facebook has set the `c_user` cookie (i.e. authenticated)."""
+    return any(c.get("name") == "c_user" for c in ctx.cookies())
+
+
 def read_groups(path: str) -> list[str]:
     lines = []
     for line in open(path):
@@ -64,16 +69,19 @@ def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
         ctx = p.chromium.launch_persistent_context(profile_dir, headless=headless)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
 
-        # auth gate: give the user up to `login_wait` seconds to log in by hand,
-        # proceeding early as soon as we're off the login page.
+        # auth gate: wait up to `login_wait` seconds for a real login.
+        # Detect via the `c_user` cookie (only set when authenticated) — the URL
+        # is NOT a reliable signal (the logged-out page sits at facebook.com/).
         page.goto("https://www.facebook.com/", wait_until="domcontentloaded")
         login_deadline = time.monotonic() + login_wait
-        while "login" in page.url and time.monotonic() < login_deadline:
+        while not _logged_in(ctx) and time.monotonic() < login_deadline:
             remaining = int(login_deadline - time.monotonic())
             print(f"not logged in — log in in the browser window ({remaining}s left)", file=sys.stderr)
             time.sleep(3)
-        if "login" in page.url:
-            print("still not logged in after wait; continuing anyway", file=sys.stderr)
+        if not _logged_in(ctx):
+            print("still not logged in after wait; continuing anyway (will likely get nothing)", file=sys.stderr)
+        else:
+            print("logged in ✓ — starting scrape", file=sys.stderr)
 
         for url in groups:
             print(f"scraping {url}", file=sys.stderr)
