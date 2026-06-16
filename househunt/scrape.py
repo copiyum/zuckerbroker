@@ -6,6 +6,8 @@ import re
 import sys
 import time
 
+from .extractors import clean_url
+
 log = logging.getLogger("zuckerbroker.scrape")
 
 POST_ID_RES = [
@@ -50,11 +52,15 @@ _EXTRACT_JS = r"""
       const h = link.getAttribute('href') || '';
       if (/\/posts\/\d+|\/permalink\/\d+|multi_permalinks=\d+|story_fbid=\d+/.test(h)) { url = h; break; }
     }
-    const text = (a.innerText || '').trim();
+    // Post body lives in the story_message subtree; fall back to article text.
+    const msg = a.querySelector('[data-ad-rendering-role="story_message"]')
+             || a.querySelector('[data-ad-comet-preview="message"]')
+             || a.querySelector('[data-ad-preview="message"]');
+    const text = ((msg ? msg.innerText : a.innerText) || '').trim();
     const imgs = [...a.querySelectorAll('img')]
       .map(i => i.src)
-      .filter(s => s && s.startsWith('http') && !s.includes('static.xx'));  // drop UI icons
-    out.push({ url, text, images: imgs });
+      .filter(s => s && s.startsWith('http') && !s.includes('static.xx'));
+    out.push({ url, text, images: imgs, hadMsg: !!msg });
   }
   return out;
 }
@@ -155,6 +161,7 @@ def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
                         raw_posts = []
                     n_articles = len(raw_posts)
                     n_with_url = sum(1 for r in raw_posts if r.get("url"))
+                    n_msg = sum(1 for r in raw_posts if r.get("hadMsg"))
                     n_with_id = 0
                     n_no_id_but_url = 0
                     for raw in raw_posts:
@@ -162,18 +169,19 @@ def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
                         if pid:
                             n_with_id += 1
                             if pid not in seen:
+                                href = raw["url"]
+                                full = "https://www.facebook.com" + href if href and href.startswith("/") else href
                                 seen[pid] = {
                                     "id": pid,
-                                    "url": "https://www.facebook.com" + raw["url"]
-                                           if raw["url"] and raw["url"].startswith("/") else raw["url"],
+                                    "url": clean_url(full),
                                     "text": raw.get("text", ""),
                                     "images": raw.get("images", []),
                                 }
                         elif raw.get("url"):
                             n_no_id_but_url += 1
                     new_this_cycle = len(seen) - before
-                    log.debug("[group %d/%d] cycle %d | articles=%d with_url=%d with_id=%d unparsed_url=%d new=%d total_seen=%d idle=%d",
-                              gi, len(groups), cycle, n_articles, n_with_url, n_with_id,
+                    log.debug("[group %d/%d] cycle %d | articles=%d story_msg=%d with_url=%d with_id=%d unparsed_url=%d new=%d total_seen=%d idle=%d",
+                              gi, len(groups), cycle, n_articles, n_msg, n_with_url, n_with_id,
                               n_no_id_but_url, new_this_cycle, len(seen), idle_cycles)
                     if new_this_cycle:
                         flush()  # persist incrementally — survive a mid-group Ctrl-C
