@@ -1,4 +1,7 @@
+import pytest
+
 from househunt import extractors as ex
+from househunt.extractors import normalize_bhk
 
 KEYS = {"bhk", "rent", "deposit", "maintenance", "location", "contact",
         "listing_type", "furnishing", "available_from", "notes"}
@@ -40,3 +43,25 @@ def test_deposit_only_does_not_set_rent():
     out = ex.regex_extract("Security deposit ₹60000 only")
     assert out["rent"] is None
     assert out["deposit"] == 60000
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("2", "2 BHK"),
+    ("2 BHK", "2 BHK"),
+    ("2BHK", "2 BHK"),
+    ("3bhk", "3 BHK"),
+    ("1 BHK", "1 BHK"),
+    ("1BHK", "1 BHK"),
+    ("1 RK", "1 RK"),
+    ("rk", "1 RK"),
+    ("studio", "Studio"),
+    ("Studio", "Studio"),
+    ("2 BHK / 3 BHK", "2 BHK / 3 BHK"),
+    ("1bhk 2bhk 3bhk", "1 BHK / 2 BHK / 3 BHK"),
+    ("2.5 BHK", "2.5 BHK"),
+    ("", None),
+    (None, None),
+    ("no bedroom info", None),
+])
+def test_normalize_bhk(raw, expected):
+    assert normalize_bhk(raw) == expected

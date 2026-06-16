@@ -3,6 +3,35 @@ import re
 BHK_RE = re.compile(r'(\d+(?:\.\d)?)\s*(?:bhk|bedroom|bed\b|rk\b)', re.I)
 PHONE_RE = re.compile(r'(?<!\d)(\+?91[\-\s]?)?([6-9]\d{9})(?!\d)')
 
+_BHK_NUM_RE = re.compile(r'(\d+(?:\.\d+)?)\s*(?:bhk|bedroom|bed\b)', re.I)
+_BARE_NUM_RE = re.compile(r'^\s*(\d+(?:\.\d+)?)\s*$')
+
+
+def normalize_bhk(raw: str | None) -> str | None:
+    """Canonicalize messy bhk strings -> 'N BHK' / '1 RK' / 'Studio' / None.
+    Multi-config strings ('1bhk 2bhk') -> '1 BHK / 2 BHK / 3 BHK'."""
+    if not raw:
+        return None
+    text = str(raw).strip()
+    low = text.lower()
+    if "studio" in low:
+        return "Studio"
+    nums = _BHK_NUM_RE.findall(text)
+    if not nums:
+        m = _BARE_NUM_RE.match(text)
+        if m:
+            nums = [m.group(1)]
+    if nums:
+        seen = []
+        for n in nums:
+            label = f"{n} BHK"
+            if label not in seen:
+                seen.append(label)
+        return " / ".join(seen)
+    if re.search(r'\brk\b', low) or low == "rk":
+        return "1 RK"
+    return None
+
 
 def _amount(text: str, keyword_re: str) -> int | None:
     """Find a money amount near a keyword; normalize trailing 'k' to *1000."""
