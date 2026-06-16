@@ -189,15 +189,21 @@ def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
                         pid = parse_post_id(raw.get("url") or "")
                         if pid:
                             n_with_id += 1
-                            if pid not in seen:
+                            text = raw.get("text", "")
+                            imgs = raw.get("images", [])
+                            existing = seen.get(pid)
+                            if existing is None:
                                 href = raw["url"]
                                 full = "https://www.facebook.com" + href if href and href.startswith("/") else href
-                                seen[pid] = {
-                                    "id": pid,
-                                    "url": clean_url(full),
-                                    "text": raw.get("text", ""),
-                                    "images": raw.get("images", []),
-                                }
+                                seen[pid] = {"id": pid, "url": clean_url(full), "text": text, "images": imgs}
+                            else:
+                                # Self-heal: a post first seen while still truncated ("See more"
+                                # not yet expanded) gets replaced once a later cycle has fuller text.
+                                if len(text) > len(existing["text"]):
+                                    existing["text"] = text
+                                if imgs:
+                                    existing["images"] = existing["images"] + [
+                                        u for u in imgs if u not in existing["images"]]
                         elif raw.get("url"):
                             n_no_id_but_url += 1
                     new_this_cycle = len(seen) - before
