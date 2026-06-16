@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 from . import db, llm
@@ -44,25 +45,44 @@ def extract_post(post: dict, cfg: Config, tracker: CostTracker | None = None) ->
     return record
 
 
-def run(raw_path: str, cfg: Config) -> int:
-    """Process raw.json into the DB. Returns count of new listings inserted."""
+def run(raw_path: str, cfg: Config, workers: int = 8) -> int:
+    """Process raw.json into the DB concurrently. Workers do the LLM call + image
+    download; the main thread is the sole SQLite writer. Returns new listings count."""
     with open(raw_path) as f:
         posts = json.load(f)
     conn = db.connect(cfg.db_path)
     db.init_db(conn)
 
+    # Resume: skip posts already stored (no re-extraction, no re-download).
+    todo = [p for p in posts if not db.exists(conn, str(p.get("id")))]
     tracker = CostTracker()
-    new_count = 0
-    for post in posts:
+
+    def work(post: dict) -> dict:
         pid = str(post.get("id"))
-        if db.exists(conn, pid):
-            continue  # already stored; skip extraction + image download
         record = extract_post(post, cfg, tracker=tracker)
         paths = download_images(pid, post.get("images") or [], cfg.images_dir)
         record["images"] = json.dumps(paths)
-        if db.upsert_listing(conn, record):
-            new_count += 1
-    print(f"{new_count} new listings -> {cfg.db_path} (total posts seen: {len(posts)})")
+        return record
+
+    new_count = 0
+    done = 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(work, p): str(p.get("id")) for p in todo}
+        for fut in as_completed(futures):
+            pid = futures[fut]
+            try:
+                record = fut.result()
+            except Exception as e:  # noqa: BLE001 - one bad post must not kill the batch
+                print(f"  post {pid} failed: {e}; skipped", file=sys.stderr)
+                continue
+            if db.upsert_listing(conn, record):  # main thread = sole writer
+                new_count += 1
+            done += 1
+            if done % 25 == 0:
+                print(f"  ...{done}/{len(todo)} processed", file=sys.stderr)
+
+    print(f"{new_count} new listings -> {cfg.db_path} "
+          f"(total posts seen: {len(posts)}, already-had: {len(posts) - len(todo)})")
     print(tracker.format(), file=sys.stderr)
     return new_count
 
@@ -72,13 +92,14 @@ def main(argv=None) -> None:
     ap.add_argument("raw", nargs="?", default="raw.json")
     ap.add_argument("--db")
     ap.add_argument("--images")
+    ap.add_argument("--workers", type=int, default=8, help="parallel LLM workers")
     args = ap.parse_args(argv)
     cfg = load_config()
     if args.db:
         cfg = Config(cfg.llm_base_url, cfg.llm_api_key, cfg.llm_model, args.db, cfg.images_dir)
     if args.images:
         cfg = Config(cfg.llm_base_url, cfg.llm_api_key, cfg.llm_model, cfg.db_path, args.images)
-    run(args.raw, cfg)
+    run(args.raw, cfg, workers=args.workers)
 
 
 if __name__ == "__main__":

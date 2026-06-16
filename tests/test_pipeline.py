@@ -102,3 +102,46 @@ def test_normal_post_uses_llm_post_kind(monkeypatch):
     rec = pipeline.extract_post({"id": "n1", "url": "U", "text": "2bhk rent 30k", "images": []}, cfg)
     assert rec["post_kind"] == "offer"
     assert rec["listing_type"] == "entire_flat"
+
+
+def test_run_parallel_stores_all_then_dedups(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)  # no api key -> regex path
+    monkeypatch.setattr(pipeline, "download_images", lambda pid, urls, d: [])
+    raw = str(tmp_path / "raw.json")
+    fixture = json.load(open(_FIXTURES / "sample_raw.json"))
+    fixture = fixture + [{"id": "p3", "url": "https://fb.com/p3",
+                          "text": "1 BHK rent 18k entire flat", "images": []}]
+    json.dump(fixture, open(raw, "w"))
+
+    assert pipeline.run(raw, cfg, workers=4) == 3
+    assert pipeline.run(raw, cfg, workers=4) == 0  # resume/dedup
+    conn = db.connect(cfg.db_path)
+    assert len(db.fetch_all(conn)) == 3
+
+
+def test_run_parallel_survives_one_failing_post(tmp_path, monkeypatch):
+    cfg = Config("u", "key", "m", str(tmp_path / "t.db"), str(tmp_path / "imgs"))
+    monkeypatch.setattr(pipeline, "download_images", lambda pid, urls, d: [])
+
+    def ok_llm(text, c, tracker=None):
+        return {"bhk": None, "rent": 1, "deposit": None, "maintenance": None,
+                "location": None, "contact": None, "listing_type": None,
+                "furnishing": None, "available_from": None, "notes": None,
+                "post_kind": "offer"}
+    monkeypatch.setattr(pipeline.llm, "llm_extract", ok_llm)
+
+    real_extract = pipeline.extract_post
+    def maybe_raise(post, c, tracker=None):
+        if post.get("id") == "bad":
+            raise RuntimeError("worker blew up")
+        return real_extract(post, c, tracker=tracker)
+    monkeypatch.setattr(pipeline, "extract_post", maybe_raise)
+
+    raw = str(tmp_path / "raw.json")
+    json.dump([{"id": "ok1", "url": "u", "text": "x", "images": []},
+               {"id": "bad", "url": "u", "text": "x", "images": []},
+               {"id": "ok2", "url": "u", "text": "x", "images": []}], open(raw, "w"))
+    n = pipeline.run(raw, cfg, workers=4)
+    assert n == 2
+    conn = db.connect(cfg.db_path)
+    assert {r["id"] for r in db.fetch_all(conn)} == {"ok1", "ok2"}
