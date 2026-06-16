@@ -1,6 +1,7 @@
 import re
 
-BHK_RE = re.compile(r'(\d+(?:\.\d)?)\s*(?:bhk|bedroom|bed\b|rk\b)', re.I)
+BHK_RE = re.compile(r'(\d+(?:\.\d)?)\s*(?:bhk|bedroom|bed\b)', re.I)
+_RK_RE = re.compile(r'(\d+)\s*rk\b', re.I)
 PHONE_RE = re.compile(r'(?<!\d)(\+?91[\-\s]?)?([6-9]\d{9})(?!\d)')
 
 _BHK_NUM_RE = re.compile(r'(\d+(?:\.\d+)?)\s*(?:bhk|bedroom|bed\b)', re.I)
@@ -64,6 +65,9 @@ def parse_bhk(text: str) -> str | None:
     m = BHK_RE.search(text)
     if m:
         return m.group(1) + " BHK"
+    m = _RK_RE.search(text)
+    if m:
+        return "1 RK"
     if re.search(r'\b1\s*rk\b', text, re.I):
         return "1 RK"
     if re.search(r'\bstudio\b', text, re.I):
@@ -103,7 +107,7 @@ def regex_extract(text: str) -> dict:
     location, available_from, notes are not reliably regex-able -> None."""
     text = text or ""
     return {
-        "bhk": parse_bhk(text),
+        "bhk": normalize_bhk(parse_bhk(text)),
         "rent": parse_rent(text),
         "deposit": parse_deposit(text),
         "maintenance": parse_maintenance(text),

@@ -65,3 +65,8 @@ def test_deposit_only_does_not_set_rent():
 ])
 def test_normalize_bhk(raw, expected):
     assert normalize_bhk(raw) == expected
+
+
+def test_regex_extract_normalizes_bhk():
+    assert ex.regex_extract("3bhk rent 20k")["bhk"] == "3 BHK"
+    assert ex.regex_extract("1 RK available")["bhk"] == "1 RK"
