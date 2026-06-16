@@ -8,6 +8,13 @@ _BHK_NUM_RE = re.compile(r'(\d+(?:\.\d+)?)\s*(?:bhk|bedroom|bed\b)', re.I)
 _BARE_NUM_RE = re.compile(r'^\s*(\d+(?:\.\d+)?)\s*$')
 
 
+def clean_url(url: str | None) -> str | None:
+    """Drop query string (FB `?__cft__…&__tn__=…` tracking) from a permalink."""
+    if not url:
+        return None
+    return url.split("?", 1)[0]
+
+
 def normalize_bhk(raw: str | None) -> str | None:
     """Canonicalize messy bhk strings -> 'N BHK' / '1 RK' / 'Studio' / None.
     Multi-config strings ('1bhk 2bhk') -> '1 BHK / 2 BHK / 3 BHK'."""
