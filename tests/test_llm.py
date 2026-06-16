@@ -67,3 +67,47 @@ def test_llm_extract_handles_bare_json(monkeypatch):
     monkeypatch.setattr(llm.requests, "post", lambda *a, **k: FakeResp())
     out = llm.llm_extract("x", _cfg())
     assert out["rent"] == 7000
+
+
+def _codex_cfg():
+    return Config("http://api.test/v1", "key", "gpt-5.1-codex-mini", "x.db", "images")
+
+
+def test_codex_model_uses_responses_endpoint(monkeypatch):
+    # Responses API shape: output is a list of items; text is in output_text segments.
+    class FakeResp:
+        def raise_for_status(self): pass
+        def json(self):
+            return {"output": [
+                {"type": "reasoning", "content": []},
+                {"type": "message", "content": [
+                    {"type": "output_text", "text": '{"rent": 22000, "bhk": "1 BHK"}'}]},
+            ]}
+
+    captured = {}
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured["url"] = url
+        captured["body"] = json
+        captured["auth"] = headers["Authorization"]
+        return FakeResp()
+
+    monkeypatch.setattr(llm.requests, "post", fake_post)
+    out = llm.llm_extract("1bhk 22k", _codex_cfg())
+    assert out["rent"] == 22000
+    assert out["bhk"] == "1 BHK"
+    assert captured["url"] == "http://api.test/v1/responses"   # NOT /chat/completions
+    assert captured["auth"] == "Bearer key"
+    assert captured["body"]["instructions"] == llm.SYSTEM_PROMPT
+    assert captured["body"]["input"] == "1bhk 22k"
+    assert "messages" not in captured["body"]          # responses shape, not chat
+
+
+def test_codex_responses_output_text_convenience_field(monkeypatch):
+    # Some responses payloads include a top-level aggregated `output_text`.
+    class FakeResp:
+        def raise_for_status(self): pass
+        def json(self):
+            return {"output_text": '{"rent": 9000}', "output": []}
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: FakeResp())
+    out = llm.llm_extract("x", _codex_cfg())
+    assert out["rent"] == 9000
