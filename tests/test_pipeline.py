@@ -63,3 +63,16 @@ def test_run_only_downloads_images_for_new_posts(tmp_path, monkeypatch):
     calls.clear()
     pipeline.run(raw, cfg)  # second run: nothing new
     assert calls == []
+
+
+def test_extract_post_normalizes_llm_bhk(monkeypatch):
+    cfg = Config("u", "key", "m", "d", "i")  # has key -> llm path
+
+    def fake_llm(text, c, tracker=None):
+        return {"bhk": "2bhk", "rent": 30000, "deposit": None, "maintenance": None,
+                "location": "HSR", "contact": None, "listing_type": "entire_flat",
+                "furnishing": None, "available_from": None, "notes": None}
+
+    monkeypatch.setattr(pipeline.llm, "llm_extract", fake_llm)
+    rec = pipeline.extract_post({"id": "p1", "url": "U", "text": "x", "images": []}, cfg)
+    assert rec["bhk"] == "2 BHK"   # normalized, not "2bhk"

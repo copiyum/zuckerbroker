@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from . import db, llm
 from .config import Config, load_config
 from .cost import CostTracker
-from .extractors import regex_extract
+from .extractors import normalize_bhk, regex_extract
 from .images import download_images
 
 
@@ -31,6 +31,7 @@ def extract_post(post: dict, cfg: Config, tracker: CostTracker | None = None) ->
         "scraped_at": datetime.now(timezone.utc).isoformat(),
     }
     record.update(fields)
+    record["bhk"] = normalize_bhk(record.get("bhk"))
     return record
 
 
