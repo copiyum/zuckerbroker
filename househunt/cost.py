@@ -5,6 +5,8 @@ provider's pricing page — they change often. An unknown model still has its
 tokens tracked; only its dollar cost is reported as unknown.
 """
 
+import threading
+
 # ponytail: a plain dict, not a config file or API lookup. Edit here when prices move.
 PRICES: dict[str, tuple[float, float]] = {
     # OpenAI
@@ -43,17 +45,19 @@ class CostTracker:
         self.cost_usd = 0.0
         self.unpriced_calls = 0
         self.models: set[str] = set()
+        self._lock = threading.Lock()
 
     def add(self, model: str, in_tok: int, out_tok: int) -> None:
-        self.calls += 1
-        self.input_tokens += int(in_tok or 0)
-        self.output_tokens += int(out_tok or 0)
-        self.models.add(model)
         c = cost_usd(model, int(in_tok or 0), int(out_tok or 0))
-        if c is None:
-            self.unpriced_calls += 1
-        else:
-            self.cost_usd += c
+        with self._lock:
+            self.calls += 1
+            self.input_tokens += int(in_tok or 0)
+            self.output_tokens += int(out_tok or 0)
+            self.models.add(model)
+            if c is None:
+                self.unpriced_calls += 1
+            else:
+                self.cost_usd += c
 
     def summary(self) -> dict:
         return {

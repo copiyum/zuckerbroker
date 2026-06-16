@@ -1,3 +1,5 @@
+import threading
+
 from househunt import cost
 
 
@@ -37,3 +39,19 @@ def test_price_lookup_case_insensitive():
 def test_cost_usd_helper():
     assert abs(cost.cost_usd("gpt-5.4", 1_000_000, 1_000_000) - 17.50) < 1e-6
     assert cost.cost_usd("unknown", 100, 100) is None
+
+
+def test_cost_tracker_thread_safe():
+    t = cost.CostTracker()
+    def work():
+        for _ in range(100):
+            t.add("gpt-4.1-nano", 1000, 1000)
+    threads = [threading.Thread(target=work) for _ in range(20)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    s = t.summary()
+    assert s["calls"] == 2000
+    assert s["input_tokens"] == 2_000_000
+    assert s["output_tokens"] == 2_000_000
