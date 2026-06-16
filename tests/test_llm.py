@@ -111,3 +111,31 @@ def test_codex_responses_output_text_convenience_field(monkeypatch):
     monkeypatch.setattr(llm.requests, "post", lambda *a, **k: FakeResp())
     out = llm.llm_extract("x", _codex_cfg())
     assert out["rent"] == 9000
+
+
+def test_llm_extract_records_chat_usage_to_tracker(monkeypatch):
+    class FakeResp:
+        def raise_for_status(self): pass
+        def json(self):
+            return {"choices": [{"message": {"content": '{"rent": 1}'}}],
+                    "usage": {"prompt_tokens": 100, "completion_tokens": 20}}
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: FakeResp())
+    from househunt.cost import CostTracker
+    t = CostTracker()
+    llm.llm_extract("x", _cfg(), tracker=t)
+    s = t.summary()
+    assert s["calls"] == 1 and s["input_tokens"] == 100 and s["output_tokens"] == 20
+
+
+def test_llm_extract_records_responses_usage_to_tracker(monkeypatch):
+    class FakeResp:
+        def raise_for_status(self): pass
+        def json(self):
+            return {"output_text": '{"rent": 1}',
+                    "usage": {"input_tokens": 200, "output_tokens": 50}}
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: FakeResp())
+    from househunt.cost import CostTracker
+    t = CostTracker()
+    llm.llm_extract("x", _codex_cfg(), tracker=t)
+    s = t.summary()
+    assert s["input_tokens"] == 200 and s["output_tokens"] == 50
