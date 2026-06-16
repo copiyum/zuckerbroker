@@ -108,6 +108,22 @@ def parse_contact(text: str) -> str | None:
     return m.group(2) if m else None
 
 
+_SALE_INTENT_RE = re.compile(
+    r'\b(move\s*out\s*sale|moving\s*out\s*sale|moving\s*sale|for\s+sale|selling)\b', re.I)
+# A line like "Sofa- 10000" or "Study table -6500" or "Bed : 5000".
+_ITEM_PRICE_RE = re.compile(r'^.{0,40}?[-:]\s*\d{3,6}\s*$', re.M)
+
+
+def looks_like_sale(text: str) -> bool:
+    """High-confidence goods-sale detector. Fires on sale INTENT or several
+    '<item> - <price>' lines — never on appliance nouns alone (a furnished flat
+    lists those too)."""
+    t = text or ""
+    if _SALE_INTENT_RE.search(t):
+        return True
+    return len(_ITEM_PRICE_RE.findall(t)) >= 2
+
+
 def regex_extract(text: str) -> dict:
     """Offline best-effort extraction. Unfillable fields are None.
     location, available_from, notes are not reliably regex-able -> None."""

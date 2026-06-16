@@ -1,7 +1,7 @@
 import pytest
 
 from househunt import extractors as ex
-from househunt.extractors import clean_url, normalize_bhk
+from househunt.extractors import clean_url, looks_like_sale, normalize_bhk
 
 KEYS = {"bhk", "rent", "deposit", "maintenance", "location", "contact",
         "listing_type", "furnishing", "available_from", "notes"}
@@ -87,3 +87,19 @@ def test_clean_url_already_clean():
 def test_clean_url_none_passthrough():
     assert clean_url(None) is None
     assert clean_url("") is None
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Move out sale. Sofa 10000, fridge 5000", True),
+    ("Moving out sale, everything must go", True),
+    ("Selling my study table, 2.5k", True),
+    ("Dining table for sale", True),
+    ("Sofa- 10000\nStudy table -6500\nBed - 5000", True),
+    ("2BHK fully furnished with sofa, fridge, washing machine, rent 30k", False),
+    ("1 BHK semi furnished, deposit 60000, near HSR", False),
+    ("Looking for a room in a 2BHK", False),
+    ("Flatmate wanted for 3BHK", False),
+    ("", False),
+])
+def test_looks_like_sale(text, expected):
+    assert looks_like_sale(text) is expected
