@@ -17,7 +17,7 @@ def clean_url(url: str | None) -> str | None:
 
 def normalize_bhk(raw: str | None) -> str | None:
     """Canonicalize messy bhk strings -> 'N BHK' / '1 RK' / 'Studio' / None.
-    Multi-config strings ('1bhk 2bhk') -> '1 BHK / 2 BHK / 3 BHK'."""
+    Multi-config strings ('1bhk 2bhk 3bhk') -> '1 BHK / 2 BHK / 3 BHK'."""
     if not raw:
         return None
     text = str(raw).strip()
@@ -30,12 +30,13 @@ def normalize_bhk(raw: str | None) -> str | None:
         if m:
             nums = [m.group(1)]
     if nums:
-        seen = []
+        labels = []
         for n in nums:
             label = f"{n} BHK"
-            if label not in seen:
-                seen.append(label)
-        return " / ".join(seen)
+            if label not in labels:
+                labels.append(label)
+        return " / ".join(labels)
+    # RK is conventionally always 1RK (one room + kitchen); any "RK" mention -> "1 RK".
     if re.search(r'\brk\b', low) or low == "rk":
         return "1 RK"
     return None
@@ -72,10 +73,8 @@ def parse_bhk(text: str) -> str | None:
     m = BHK_RE.search(text)
     if m:
         return m.group(1) + " BHK"
-    m = _RK_RE.search(text)
-    if m:
-        return "1 RK"
-    if re.search(r'\b1\s*rk\b', text, re.I):
+    # RK is conventionally always 1RK; any "RK"/"1rk"/"2rk" mention -> "1 RK".
+    if _RK_RE.search(text) or re.search(r'\brk\b', text, re.I):
         return "1 RK"
     if re.search(r'\bstudio\b', text, re.I):
         return "Studio"

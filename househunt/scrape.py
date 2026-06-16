@@ -33,7 +33,8 @@ def _logged_in(ctx) -> bool:
 
 _SEE_MORE_JS = r"""
 () => {
-  const btns = [...document.querySelectorAll('div[role="button"],span[role="button"]')]
+  // Scope to articles so we don't click sidebar/nav 'See more' chrome.
+  const btns = [...document.querySelectorAll('div[role="article"] div[role="button"],div[role="article"] span[role="button"]')]
     .filter(b => /^see more$/i.test((b.innerText || '').trim()));
   btns.forEach(b => { try { b.click(); } catch (e) {} });
   return btns.length;
@@ -51,10 +52,11 @@ def _expand_see_more(page) -> int:
 
 def read_groups(path: str) -> list[str]:
     lines = []
-    for line in open(path):
-        line = line.strip()
-        if line and not line.startswith("#"):
-            lines.append(line)
+    with open(path) as fh:
+        for line in fh:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                lines.append(line)
     return lines
 
 
