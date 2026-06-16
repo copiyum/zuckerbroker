@@ -31,6 +31,24 @@ def _logged_in(ctx) -> bool:
     return any(c.get("name") == "c_user" for c in ctx.cookies())
 
 
+_SEE_MORE_JS = r"""
+() => {
+  const btns = [...document.querySelectorAll('div[role="button"],span[role="button"]')]
+    .filter(b => /^see more$/i.test((b.innerText || '').trim()));
+  btns.forEach(b => { try { b.click(); } catch (e) {} });
+  return btns.length;
+}
+"""
+
+
+def _expand_see_more(page) -> int:
+    """Click every inline 'See more' so full post bodies render. Returns count."""
+    try:
+        return page.evaluate(_SEE_MORE_JS)
+    except Exception:  # noqa: BLE001 - expansion is best-effort
+        return 0
+
+
 def read_groups(path: str) -> list[str]:
     lines = []
     for line in open(path):
@@ -154,6 +172,9 @@ def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
                 while time.monotonic() < deadline:
                     cycle += 1
                     before = len(seen)
+                    n_expanded = _expand_see_more(page)
+                    if n_expanded:
+                        page.wait_for_timeout(500)  # let expanded text render
                     try:
                         raw_posts = page.evaluate(_EXTRACT_JS)
                     except Exception as e:  # noqa: BLE001
@@ -180,8 +201,8 @@ def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
                         elif raw.get("url"):
                             n_no_id_but_url += 1
                     new_this_cycle = len(seen) - before
-                    log.debug("[group %d/%d] cycle %d | articles=%d story_msg=%d with_url=%d with_id=%d unparsed_url=%d new=%d total_seen=%d idle=%d",
-                              gi, len(groups), cycle, n_articles, n_msg, n_with_url, n_with_id,
+                    log.debug("[group %d/%d] cycle %d | articles=%d story_msg=%d see_more=%d with_url=%d with_id=%d unparsed_url=%d new=%d total_seen=%d idle=%d",
+                              gi, len(groups), cycle, n_articles, n_msg, n_expanded, n_with_url, n_with_id,
                               n_no_id_but_url, new_this_cycle, len(seen), idle_cycles)
                     if new_this_cycle:
                         flush()  # persist incrementally — survive a mid-group Ctrl-C
