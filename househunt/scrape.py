@@ -88,6 +88,13 @@ def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
              len(groups), minutes, headless, profile_dir, login_wait)
 
     seen: dict[str, dict] = {}
+
+    def flush() -> None:
+        # ponytail: rewrites the whole file each call. Fine at this scale (a few
+        # thousand posts = a few MB). Switch to JSONL append if it ever gets huge.
+        with open(out_path, "w") as fh:
+            json.dump(list(seen.values()), fh, ensure_ascii=False, indent=2)
+
     with sync_playwright() as p:
         ctx = p.chromium.launch_persistent_context(profile_dir, headless=headless)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
@@ -109,84 +116,87 @@ def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
             cookies = {c.get("name") for c in ctx.cookies()}
             log.info("logged in ✓ | c_user present, %d cookies set", len(cookies))
 
-        for gi, url in enumerate(groups, 1):
-            group_start = time.monotonic()
-            group_before = len(seen)
-            log.info("[group %d/%d] navigating → %s", gi, len(groups), url)
-            try:
-                page.goto(url, wait_until="domcontentloaded")
-            except Exception as e:  # noqa: BLE001 - one bad group must not kill the run
-                log.error("[group %d/%d] goto FAILED: %s", gi, len(groups), e)
-                continue
-
-            # one-shot page diagnostics right after navigation
-            try:
-                diag = page.evaluate(_DIAG_JS)
-                log.info("[group %d/%d] landed | url=%s title=%r articles=%d feeds=%d imgs=%d bodyLen=%d joinWall=%s loginWall=%s",
-                         gi, len(groups), diag.get("url"), (diag.get("title") or "")[:60],
-                         diag.get("articleCount"), diag.get("feedCount"), diag.get("imgCount"),
-                         diag.get("bodyLen"), diag.get("joinWall"), diag.get("loginWall"))
-                if diag.get("joinWall"):
-                    log.warning("[group %d/%d] JOIN WALL detected — you may not be a member; feed likely empty", gi, len(groups))
-                if diag.get("articleCount", 0) == 0:
-                    log.warning("[group %d/%d] 0 article nodes on landing — feed may not have rendered yet, or selector is stale", gi, len(groups))
-            except Exception as e:  # noqa: BLE001
-                log.error("[group %d/%d] diagnostic eval failed: %s", gi, len(groups), e)
-
-            deadline = time.monotonic() + minutes * 60
-            idle_cycles = 0
-            cycle = 0
-            exit_reason = "deadline"
-            while time.monotonic() < deadline:
-                cycle += 1
-                before = len(seen)
+        try:
+            for gi, url in enumerate(groups, 1):
+                group_start = time.monotonic()
+                group_before = len(seen)
+                log.info("[group %d/%d] navigating → %s", gi, len(groups), url)
                 try:
-                    raw_posts = page.evaluate(_EXTRACT_JS)
+                    page.goto(url, wait_until="domcontentloaded")
+                except Exception as e:  # noqa: BLE001 - one bad group must not kill the run
+                    log.error("[group %d/%d] goto FAILED: %s", gi, len(groups), e)
+                    continue
+
+                # one-shot page diagnostics right after navigation
+                try:
+                    diag = page.evaluate(_DIAG_JS)
+                    log.info("[group %d/%d] landed | url=%s title=%r articles=%d feeds=%d imgs=%d bodyLen=%d joinWall=%s loginWall=%s",
+                             gi, len(groups), diag.get("url"), (diag.get("title") or "")[:60],
+                             diag.get("articleCount"), diag.get("feedCount"), diag.get("imgCount"),
+                             diag.get("bodyLen"), diag.get("joinWall"), diag.get("loginWall"))
+                    if diag.get("joinWall"):
+                        log.warning("[group %d/%d] JOIN WALL detected — you may not be a member; feed likely empty", gi, len(groups))
+                    if diag.get("articleCount", 0) == 0:
+                        log.warning("[group %d/%d] 0 article nodes on landing — feed may not have rendered yet, or selector is stale", gi, len(groups))
                 except Exception as e:  # noqa: BLE001
-                    log.error("[group %d/%d] cycle %d extract eval failed: %s", gi, len(groups), cycle, e)
-                    raw_posts = []
-                n_articles = len(raw_posts)
-                n_with_url = sum(1 for r in raw_posts if r.get("url"))
-                n_with_id = 0
-                n_no_id_but_url = 0
-                for raw in raw_posts:
-                    pid = parse_post_id(raw.get("url") or "")
-                    if pid:
-                        n_with_id += 1
-                        if pid not in seen:
-                            seen[pid] = {
-                                "id": pid,
-                                "url": "https://www.facebook.com" + raw["url"]
-                                       if raw["url"] and raw["url"].startswith("/") else raw["url"],
-                                "text": raw.get("text", ""),
-                                "images": raw.get("images", []),
-                            }
-                    elif raw.get("url"):
-                        n_no_id_but_url += 1
-                new_this_cycle = len(seen) - before
-                log.debug("[group %d/%d] cycle %d | articles=%d with_url=%d with_id=%d unparsed_url=%d new=%d total_seen=%d idle=%d",
-                          gi, len(groups), cycle, n_articles, n_with_url, n_with_id,
-                          n_no_id_but_url, new_this_cycle, len(seen), idle_cycles)
-                if len(seen) == before:
-                    idle_cycles += 1
-                    if idle_cycles >= 3:
-                        exit_reason = f"idle (no new posts {idle_cycles} cycles; last articles={n_articles})"
-                        break  # no new posts for 3 consecutive cycles; stop this group early
-                else:
-                    idle_cycles = 0
-                page.mouse.wheel(0, 4000)
-                time.sleep(random.uniform(1.0, 3.0))  # ponytail: fixed jitter, not a behavior model
+                    log.error("[group %d/%d] diagnostic eval failed: %s", gi, len(groups), e)
 
-            group_new = len(seen) - group_before
-            log.info("[group %d/%d] done | new_posts=%d cycles=%d duration=%.1fs exit=%s",
-                     gi, len(groups), group_new, cycle, time.monotonic() - group_start, exit_reason)
-            if group_new == 0:
-                log.warning("[group %d/%d] collected ZERO posts — check joinWall/articles/loginWall above", gi, len(groups))
+                deadline = time.monotonic() + minutes * 60
+                idle_cycles = 0
+                cycle = 0
+                exit_reason = "deadline"
+                while time.monotonic() < deadline:
+                    cycle += 1
+                    before = len(seen)
+                    try:
+                        raw_posts = page.evaluate(_EXTRACT_JS)
+                    except Exception as e:  # noqa: BLE001
+                        log.error("[group %d/%d] cycle %d extract eval failed: %s", gi, len(groups), cycle, e)
+                        raw_posts = []
+                    n_articles = len(raw_posts)
+                    n_with_url = sum(1 for r in raw_posts if r.get("url"))
+                    n_with_id = 0
+                    n_no_id_but_url = 0
+                    for raw in raw_posts:
+                        pid = parse_post_id(raw.get("url") or "")
+                        if pid:
+                            n_with_id += 1
+                            if pid not in seen:
+                                seen[pid] = {
+                                    "id": pid,
+                                    "url": "https://www.facebook.com" + raw["url"]
+                                           if raw["url"] and raw["url"].startswith("/") else raw["url"],
+                                    "text": raw.get("text", ""),
+                                    "images": raw.get("images", []),
+                                }
+                        elif raw.get("url"):
+                            n_no_id_but_url += 1
+                    new_this_cycle = len(seen) - before
+                    log.debug("[group %d/%d] cycle %d | articles=%d with_url=%d with_id=%d unparsed_url=%d new=%d total_seen=%d idle=%d",
+                              gi, len(groups), cycle, n_articles, n_with_url, n_with_id,
+                              n_no_id_but_url, new_this_cycle, len(seen), idle_cycles)
+                    if new_this_cycle:
+                        flush()  # persist incrementally — survive a mid-group Ctrl-C
+                    if len(seen) == before:
+                        idle_cycles += 1
+                        if idle_cycles >= 3:
+                            exit_reason = f"idle (no new posts {idle_cycles} cycles; last articles={n_articles})"
+                            break  # no new posts for 3 consecutive cycles; stop this group early
+                    else:
+                        idle_cycles = 0
+                    page.mouse.wheel(0, 4000)
+                    time.sleep(random.uniform(1.0, 3.0))  # ponytail: fixed jitter, not a behavior model
 
-        ctx.close()
+                group_new = len(seen) - group_before
+                log.info("[group %d/%d] done | new_posts=%d cycles=%d duration=%.1fs exit=%s",
+                         gi, len(groups), group_new, cycle, time.monotonic() - group_start, exit_reason)
+                if group_new == 0:
+                    log.warning("[group %d/%d] collected ZERO posts — check joinWall/articles/loginWall above", gi, len(groups))
+                flush()  # checkpoint after each group
+        finally:
+            flush()  # always persist what we have, even on Ctrl-C / crash
+            ctx.close()
 
-    with open(out_path, "w") as fh:
-        json.dump(list(seen.values()), fh, ensure_ascii=False, indent=2)
     log.info("scrape done | total_posts=%d duration=%.1fs → %s",
              len(seen), time.monotonic() - run_start, out_path)
     return len(seen)
