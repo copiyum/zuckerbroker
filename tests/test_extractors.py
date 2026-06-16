@@ -4,7 +4,7 @@ from househunt import extractors as ex
 from househunt.extractors import clean_url, looks_like_sale, normalize_bhk
 
 KEYS = {"bhk", "rent", "deposit", "maintenance", "location", "contact",
-        "listing_type", "furnishing", "available_from", "notes"}
+        "listing_type", "post_kind", "furnishing", "available_from", "notes"}
 
 
 def test_returns_all_keys():

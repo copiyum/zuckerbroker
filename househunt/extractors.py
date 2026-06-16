@@ -136,6 +136,7 @@ def regex_extract(text: str) -> dict:
         "location": None,
         "contact": parse_contact(text),
         "listing_type": parse_listing_type(text),
+        "post_kind": None,
         "furnishing": parse_furnishing(text),
         "available_from": None,
         "notes": None,

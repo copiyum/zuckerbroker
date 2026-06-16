@@ -6,7 +6,7 @@ def _record(id="p1", **over):
         "id": id, "url": "u", "text": "t", "bhk": "2 BHK", "rent": 30000,
         "deposit": 60000, "maintenance": 2000, "location": "Koramangala",
         "contact": "9999999999", "listing_type": "entire_flat",
-        "furnishing": "furnished", "available_from": None, "notes": None,
+        "post_kind": "offer", "furnishing": "furnished", "available_from": None, "notes": None,
         "images": "[]", "scraped_at": "2026-06-16T00:00:00",
     }
     rec.update(over)
@@ -38,3 +38,13 @@ def test_exists(tmp_path):
     assert db.exists(conn, "p1") is False
     db.upsert_listing(conn, _record(id="p1"))
     assert db.exists(conn, "p1") is True
+
+
+def test_post_kind_column_roundtrips(tmp_path):
+    conn = db.connect(str(tmp_path / "t.db"))
+    db.init_db(conn)
+    assert "post_kind" in db.COLUMNS
+    rec = _record(id="pk1", post_kind="sale")
+    db.upsert_listing(conn, rec)
+    rows = db.fetch_all(conn)
+    assert rows[0]["post_kind"] == "sale"

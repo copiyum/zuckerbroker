@@ -5,7 +5,7 @@ import requests
 from .config import Config
 
 FIELD_KEYS = ["bhk", "rent", "deposit", "maintenance", "location", "contact",
-              "listing_type", "furnishing", "available_from", "notes"]
+              "listing_type", "post_kind", "furnishing", "available_from", "notes"]
 
 SYSTEM_PROMPT = (
     "You extract structured rental-listing data from messy Facebook group posts "
@@ -14,6 +14,8 @@ SYSTEM_PROMPT = (
     "(convert '32k' -> 32000, '1L'/'1 lakh' -> 100000), or null if absent. "
     "listing_type is one of 'entire_flat', 'flatmate', 'private_room', or null; "
     "if the post seeks a flatmate/roommate or offers a room within a shared flat, use 'flatmate'. "
+    "post_kind is 'offer' if the owner/agent is offering the property, 'want' if someone is looking "
+    "for a property, or null if unclear. "
     "Return bhk as 'N BHK' (e.g. '2 BHK'), '1 RK', or 'Studio'. "
     "contact is a phone number string or null. "
     "Use null for any field not present. Do not invent values."

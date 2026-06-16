@@ -2,7 +2,7 @@ import sqlite3
 
 COLUMNS = [
     "id", "url", "text", "bhk", "rent", "deposit", "maintenance",
-    "location", "contact", "listing_type", "furnishing",
+    "location", "contact", "listing_type", "post_kind", "furnishing",
     "available_from", "notes", "images", "scraped_at",
 ]
 
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS listings (
   url TEXT, text TEXT,
   bhk TEXT, rent INTEGER, deposit INTEGER, maintenance INTEGER,
   location TEXT, contact TEXT,
-  listing_type TEXT, furnishing TEXT, available_from TEXT, notes TEXT,
+  listing_type TEXT, post_kind TEXT, furnishing TEXT, available_from TEXT, notes TEXT,
   images TEXT,
   scraped_at TEXT
 );
