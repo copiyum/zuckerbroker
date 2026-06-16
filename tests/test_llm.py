@@ -139,3 +139,18 @@ def test_llm_extract_records_responses_usage_to_tracker(monkeypatch):
     llm.llm_extract("x", _codex_cfg(), tracker=t)
     s = t.summary()
     assert s["input_tokens"] == 200 and s["output_tokens"] == 50
+
+
+def test_llm_returns_post_kind(monkeypatch):
+    payload = {"post_kind": "offer", "listing_type": "pg_hostel", "rent": 12000}
+
+    class FakeResp:
+        def raise_for_status(self): pass
+        def json(self):
+            return {"choices": [{"message": {"content": json.dumps(payload)}}]}
+
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: FakeResp())
+    out = llm.llm_extract("pg available 12k", _cfg())
+    assert out["post_kind"] == "offer"
+    assert out["listing_type"] == "pg_hostel"
+    assert "post_kind" in llm.FIELD_KEYS
