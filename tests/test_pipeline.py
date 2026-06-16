@@ -76,3 +76,29 @@ def test_extract_post_normalizes_llm_bhk(monkeypatch):
     monkeypatch.setattr(pipeline.llm, "llm_extract", fake_llm)
     rec = pipeline.extract_post({"id": "p1", "url": "U", "text": "x", "images": []}, cfg)
     assert rec["bhk"] == "2 BHK"   # normalized, not "2bhk"
+
+
+def test_sale_post_skips_llm_and_tags_sale(monkeypatch):
+    cfg = Config("u", "key", "m", "d", "i")  # has key, but sale should skip LLM
+    called = []
+    monkeypatch.setattr(pipeline.llm, "llm_extract",
+                        lambda text, c, tracker=None: called.append(1) or {})
+    post = {"id": "s1", "url": "U", "text": "Move out sale. Sofa 10000, fridge 5000", "images": []}
+    rec = pipeline.extract_post(post, cfg)
+    assert rec["post_kind"] == "sale"
+    assert called == []  # LLM never called for an obvious sale
+
+
+def test_normal_post_uses_llm_post_kind(monkeypatch):
+    cfg = Config("u", "key", "m", "d", "i")
+
+    def fake_llm(text, c, tracker=None):
+        return {"bhk": "2 BHK", "rent": 30000, "deposit": None, "maintenance": None,
+                "location": "HSR", "contact": None, "listing_type": "entire_flat",
+                "furnishing": None, "available_from": None, "notes": None,
+                "post_kind": "offer"}
+
+    monkeypatch.setattr(pipeline.llm, "llm_extract", fake_llm)
+    rec = pipeline.extract_post({"id": "n1", "url": "U", "text": "2bhk rent 30k", "images": []}, cfg)
+    assert rec["post_kind"] == "offer"
+    assert rec["listing_type"] == "entire_flat"

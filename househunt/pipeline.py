@@ -6,22 +6,15 @@ from datetime import datetime, timezone
 from . import db, llm
 from .config import Config, load_config
 from .cost import CostTracker
-from .extractors import normalize_bhk, regex_extract
+from .extractors import looks_like_sale, normalize_bhk, regex_extract
 from .images import download_images
 
 
 def extract_post(post: dict, cfg: Config, tracker: CostTracker | None = None) -> dict:
-    """Build a full DB record from a raw post. LLM if key present, else regex;
-    LLM errors fall back to regex for that post (batch never aborts)."""
+    """Build a full DB record from a raw post. High-confidence goods-sale posts are
+    tagged post_kind='sale' WITHOUT an LLM call (cost saving). Otherwise the LLM
+    classifies + extracts; on LLM error, fall back to regex (batch never aborts)."""
     text = post.get("text") or ""
-    fields = None
-    if cfg.llm_api_key:
-        try:
-            fields = llm.llm_extract(text, cfg, tracker=tracker)
-        except Exception as e:  # noqa: BLE001
-            print(f"  llm fail {post.get('id')}: {e}; using regex", file=sys.stderr)
-    if fields is None:
-        fields = regex_extract(text)
 
     record = {
         "id": str(post.get("id")),
@@ -30,7 +23,23 @@ def extract_post(post: dict, cfg: Config, tracker: CostTracker | None = None) ->
         "images": "[]",
         "scraped_at": datetime.now(timezone.utc).isoformat(),
     }
-    record.update(fields)
+
+    if looks_like_sale(text):
+        # Obvious furniture/goods sale — skip the LLM, tag it, store regex fields.
+        record.update(regex_extract(text))
+        record["post_kind"] = "sale"
+    else:
+        fields = None
+        if cfg.llm_api_key:
+            try:
+                fields = llm.llm_extract(text, cfg, tracker=tracker)
+            except Exception as e:  # noqa: BLE001
+                print(f"  llm fail {post.get('id')}: {e}; using regex", file=sys.stderr)
+        if fields is None:
+            fields = regex_extract(text)
+            fields.setdefault("post_kind", None)  # regex can't classify intent
+        record.update(fields)
+
     record["bhk"] = normalize_bhk(record.get("bhk"))
     return record
 
