@@ -7,16 +7,15 @@ from datetime import datetime, timezone
 from . import db, llm
 from .config import Config, load_config
 from .cost import CostTracker
-from .extractors import looks_like_sale, normalize_bhk, regex_extract
+from .extractors import looks_like_sale, normalize_bhk
 from .images import download_images
 
 
-def extract_post(post: dict, cfg: Config, tracker: CostTracker | None = None) -> dict:
-    """Build a full DB record from a raw post. High-confidence goods-sale posts are
-    tagged post_kind='sale' WITHOUT an LLM call (cost saving). Otherwise the LLM
-    classifies + extracts; on LLM error, fall back to regex (batch never aborts)."""
+def extract_post(post: dict, cfg: Config, tracker: CostTracker | None = None) -> dict | None:
+    """Build a DB record. Sale posts are tagged without an LLM call. Otherwise the
+    LLM classifies+extracts (SDK retries 429s); on terminal failure return None so
+    the caller SKIPS the post (resume retries it next run — no corrupt rows)."""
     text = post.get("text") or ""
-
     record = {
         "id": str(post.get("id")),
         "url": post.get("url"),
@@ -24,34 +23,30 @@ def extract_post(post: dict, cfg: Config, tracker: CostTracker | None = None) ->
         "images": "[]",
         "scraped_at": datetime.now(timezone.utc).isoformat(),
     }
-
     if looks_like_sale(text):
-        # Obvious furniture/goods sale — skip the LLM, tag it, store regex fields.
-        record.update(regex_extract(text))
+        record.update({k: None for k in llm.FIELD_KEYS})
         record["post_kind"] = "sale"
     else:
-        fields = None
-        if cfg.llm_api_key:
-            try:
-                fields = llm.llm_extract(text, cfg, tracker=tracker)
-            except Exception as e:  # noqa: BLE001
-                print(f"  llm fail {post.get('id')}: {e}; using regex", file=sys.stderr)
-        if fields is None:
-            fields = regex_extract(text)
-            fields.setdefault("post_kind", None)  # regex can't classify intent
+        try:
+            fields = llm.llm_extract(text, cfg, tracker=tracker)
+        except Exception as e:  # noqa: BLE001 - terminal LLM failure -> skip, retry next run
+            print(f"  llm fail {post.get('id')}: {e}; SKIPPED (will retry next run)", file=sys.stderr)
+            return None
         record.update(fields)
-
-    record["bhk"] = normalize_bhk(record.get("bhk"))
+        record["bhk"] = normalize_bhk(record.get("bhk"))
     return record
 
 
-def run(raw_path: str, cfg: Config, workers: int = 8) -> int:
+def run(raw_path: str, cfg: Config, workers: int = 4) -> int:
     """Process raw.json into the DB concurrently. Workers do the LLM call + image
     download; the main thread is the sole SQLite writer. Returns new listings count."""
     with open(raw_path) as f:
         posts = json.load(f)
     conn = db.connect(cfg.db_path)
     db.init_db(conn)
+
+    if not cfg.llm_api_key:
+        sys.exit("LLM key required: set LLM_API_KEY (regex fallback was removed)")
 
     # Resume: skip posts already stored (no re-extraction, no re-download).
     todo = [p for p in posts if not db.exists(conn, str(p.get("id")))]
@@ -61,7 +56,8 @@ def run(raw_path: str, cfg: Config, workers: int = 8) -> int:
         pid = str(post.get("id"))
         record = extract_post(post, cfg, tracker=tracker)
         paths = download_images(pid, post.get("images") or [], cfg.images_dir)
-        record["images"] = json.dumps(paths)
+        if record is not None:
+            record["images"] = json.dumps(paths)
         return record
 
     new_count = 0
@@ -75,6 +71,8 @@ def run(raw_path: str, cfg: Config, workers: int = 8) -> int:
             except Exception as e:  # noqa: BLE001 - one bad post must not kill the batch
                 print(f"  post {pid} failed: {e}; skipped", file=sys.stderr)
                 continue
+            if record is None:
+                continue  # LLM failed terminally — leave unstored so resume retries
             if db.upsert_listing(conn, record):  # main thread = sole writer
                 new_count += 1
             done += 1
@@ -92,7 +90,7 @@ def main(argv=None) -> None:
     ap.add_argument("raw", nargs="?", default="raw.json")
     ap.add_argument("--db")
     ap.add_argument("--images")
-    ap.add_argument("--workers", type=int, default=8, help="parallel LLM workers")
+    ap.add_argument("--workers", type=int, default=4, help="parallel LLM workers")
     args = ap.parse_args(argv)
     cfg = load_config()
     if args.db:
