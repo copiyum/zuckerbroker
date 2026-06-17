@@ -52,12 +52,12 @@ def run(raw_path: str, cfg: Config, workers: int = 4) -> int:
     todo = [p for p in posts if not db.exists(conn, str(p.get("id")))]
     tracker = CostTracker()
 
-    def work(post: dict) -> dict:
-        pid = str(post.get("id"))
+    def work(post: dict) -> dict | None:
         record = extract_post(post, cfg, tracker=tracker)
-        paths = download_images(pid, post.get("images") or [], cfg.images_dir)
-        if record is not None:
-            record["images"] = json.dumps(paths)
+        if record is None:
+            return None  # LLM failed terminally — don't download images, skip it
+        pid = str(post.get("id"))
+        record["images"] = json.dumps(download_images(pid, post.get("images") or [], cfg.images_dir))
         return record
 
     new_count = 0
