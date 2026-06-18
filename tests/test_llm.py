@@ -82,6 +82,7 @@ def test_codex_uses_responses_endpoint(monkeypatch):
     assert out["rent"] == 22000 and out["bhk"] == "1 BHK"
     assert cap["instructions"] == llm.SYSTEM_PROMPT
     assert cap["input"] == "1bhk 22k"
+    assert cap["max_output_tokens"] == 2000   # generous cap so JSON never truncates
     s = t.summary()
     assert s["input_tokens"] == 200 and s["output_tokens"] == 50
 

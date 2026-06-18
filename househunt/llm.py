@@ -69,7 +69,8 @@ def llm_extract(text: str, cfg: Config, tracker=None) -> dict:
     client = _client(cfg.llm_base_url, cfg.llm_api_key)
     if _use_responses(cfg.llm_model):
         resp = client.responses.create(
-            model=cfg.llm_model, instructions=SYSTEM_PROMPT, input=text or "")
+            model=cfg.llm_model, instructions=SYSTEM_PROMPT, input=text or "",
+            max_output_tokens=2000)  # reasoning + JSON must fit, else output truncates mid-JSON
         content = resp.output_text
     else:
         resp = client.chat.completions.create(

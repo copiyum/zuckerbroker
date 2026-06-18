@@ -23,7 +23,12 @@ def extract_post(post: dict, cfg: Config, tracker: CostTracker | None = None) ->
         "images": "[]",
         "scraped_at": datetime.now(timezone.utc).isoformat(),
     }
-    if looks_like_sale(text):
+    if not text.strip():
+        # Blank post (image-only / body didn't render). Permanently un-extractable —
+        # tag 'other' and store WITHOUT the LLM so it's done, not retried forever.
+        record.update({k: None for k in llm.FIELD_KEYS})
+        record["post_kind"] = "other"
+    elif looks_like_sale(text):
         record.update({k: None for k in llm.FIELD_KEYS})
         record["post_kind"] = "sale"
     else:

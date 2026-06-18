@@ -189,3 +189,14 @@ def test_run_parallel_survives_one_failing_post(tmp_path, monkeypatch):
     assert n == 2
     conn = db.connect(cfg.db_path)
     assert {r["id"] for r in db.fetch_all(conn)} == {"ok1", "ok2"}
+
+
+def test_extract_post_blank_text_tagged_other_no_llm(monkeypatch):
+    cfg = Config("u", "key", "m", "d", "i")
+    called = []
+    monkeypatch.setattr(pipeline.llm, "llm_extract", lambda *a, **k: called.append(1) or {})
+    for blank in ("", "   ", "\n\t "):
+        rec = pipeline.extract_post({"id": "b", "url": "u", "text": blank, "images": []}, cfg)
+        assert rec is not None and rec["post_kind"] == "other"
+        assert rec["rent"] is None and rec["bhk"] is None
+    assert called == []  # blank posts never hit the LLM (no 400, never retried)
