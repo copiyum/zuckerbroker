@@ -35,14 +35,14 @@ def test_site_smoke(tmp_path):
           hasRent: !!document.querySelector('.sidebar .item .rent'),
           chips: document.querySelectorAll('.chip').length,
         })""")
-        # clicking a sidebar item selects it (sel class) — and would fly the map
-        sel = pg.evaluate("""() => { const it=document.querySelector('.sidebar .item'); it.click();
-          return document.querySelector('.sidebar .item.sel') ? true : false; }""")
-        pg.wait_for_timeout(300)
+        # clicking a sidebar item selects it (sel class) — Svelte re-renders async, so wait then check
+        pg.evaluate("() => document.querySelector('.sidebar .item').click()")
+        pg.wait_for_timeout(500)
+        sel = pg.evaluate("() => !!document.querySelector('.sidebar .item.sel')")
         b.close()
     assert not errs, errs
     assert info["canvas"] >= 1
     assert info["items"] > 0
     assert info["hasRent"]
-    assert info["chips"] == 4
+    assert info["chips"] == 5
     assert sel is True

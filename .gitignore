@@ -43,3 +43,7 @@ web/.svelte-kit/
 web/build/
 web/static/listings.json
 web/static/images/
+
+# throwaway dedup eyeball tools
+dedup_montage.py
+dedup_montage.html

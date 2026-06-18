@@ -153,19 +153,17 @@ def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
                     log.error("[group %d/%d] goto FAILED: %s", gi, len(groups), e)
                     continue
 
-                # one-shot page diagnostics right after navigation
-                try:
-                    diag = page.evaluate(_DIAG_JS)
-                    log.info("[group %d/%d] landed | url=%s title=%r articles=%d feeds=%d imgs=%d bodyLen=%d joinWall=%s loginWall=%s",
-                             gi, len(groups), diag.get("url"), (diag.get("title") or "")[:60],
-                             diag.get("articleCount"), diag.get("feedCount"), diag.get("imgCount"),
-                             diag.get("bodyLen"), diag.get("joinWall"), diag.get("loginWall"))
-                    if diag.get("joinWall"):
-                        log.warning("[group %d/%d] JOIN WALL detected — you may not be a member; feed likely empty", gi, len(groups))
-                    if diag.get("articleCount", 0) == 0:
-                        log.warning("[group %d/%d] 0 article nodes on landing — feed may not have rendered yet, or selector is stale", gi, len(groups))
-                except Exception as e:  # noqa: BLE001
-                    log.error("[group %d/%d] diagnostic eval failed: %s", gi, len(groups), e)
+                # one-shot landing diagnostics — only under --debug (the per-group
+                # "collected ZERO posts" warning below is the always-on signal).
+                if log.isEnabledFor(logging.DEBUG):
+                    try:
+                        diag = page.evaluate(_DIAG_JS)
+                        log.debug("[group %d/%d] landed | url=%s title=%r articles=%d feeds=%d imgs=%d bodyLen=%d joinWall=%s loginWall=%s",
+                                  gi, len(groups), diag.get("url"), (diag.get("title") or "")[:60],
+                                  diag.get("articleCount"), diag.get("feedCount"), diag.get("imgCount"),
+                                  diag.get("bodyLen"), diag.get("joinWall"), diag.get("loginWall"))
+                    except Exception as e:  # noqa: BLE001
+                        log.error("[group %d/%d] diagnostic eval failed: %s", gi, len(groups), e)
 
                 deadline = time.monotonic() + minutes * 60
                 idle_cycles = 0
@@ -228,7 +226,7 @@ def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
                 log.info("[group %d/%d] done | new_posts=%d cycles=%d duration=%.1fs exit=%s",
                          gi, len(groups), group_new, cycle, time.monotonic() - group_start, exit_reason)
                 if group_new == 0:
-                    log.warning("[group %d/%d] collected ZERO posts — check joinWall/articles/loginWall above", gi, len(groups))
+                    log.warning("[group %d/%d] collected ZERO posts — re-run with --debug to see joinWall/loginWall/article counts", gi, len(groups))
                 flush()  # checkpoint after each group
         finally:
             flush()  # always persist what we have, even on Ctrl-C / crash

@@ -19,6 +19,7 @@ export function applyFilters(list, f = {}) {
     }
     if (f.type && f.type.length && !f.type.includes(l.listing_type)) return false;
     if (f.furnishing && f.furnishing.length && !f.furnishing.includes(furnishClass(l))) return false;
+    if (f.hideFemaleOnly && l.audience === "female_only") return false;
     return true;
   });
 }

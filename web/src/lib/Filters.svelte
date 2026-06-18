@@ -20,6 +20,10 @@
     onchange?.();
   }
   function active(key) { return !!store.filters[key]; }
+  function toggleFemale() {
+    store.filters.hideFemaleOnly = store.filters.hideFemaleOnly ? undefined : true;
+    onchange?.();
+  }
   function search(e) {
     e.preventDefault();
     const m = searchPlace(q);
@@ -49,4 +53,5 @@
       </div>{/if}
     </span>
   {/each}
+  <span class="chip {store.filters.hideFemaleOnly?'on':''}" onclick={toggleFemale}>Hide female-only</span>
 </div>

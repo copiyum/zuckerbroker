@@ -20,12 +20,12 @@ PRICES: dict[str, tuple[float, float]] = {
 }
 
 
+_PRICES_LC = {k.lower(): v for k, v in PRICES.items()}  # case-insensitive lookup, built once
+
+
 def price_for(model: str) -> tuple[float, float] | None:
     """(input, output) USD per 1M tokens for `model`, or None if unpriced."""
-    if model in PRICES:
-        return PRICES[model]
-    lower = {k.lower(): v for k, v in PRICES.items()}
-    return lower.get((model or "").lower())
+    return _PRICES_LC.get((model or "").lower())
 
 
 def cost_usd(model: str, in_tok: int, out_tok: int) -> float | None:

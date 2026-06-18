@@ -1,6 +1,6 @@
 import pytest
 
-from househunt.extractors import clean_url, looks_like_sale, normalize_bhk
+from househunt.extractors import classify_audience, clean_url, looks_like_sale, normalize_bhk
 
 
 @pytest.mark.parametrize("raw,expected", [
@@ -52,7 +52,25 @@ def test_clean_url_none_passthrough():
     ("1 BHK semi furnished, deposit 60000, near HSR", False),
     ("Looking for a room in a 2BHK", False),
     ("Flatmate wanted for 3BHK", False),
+    # the rescued bug: rent+deposit lines are NOT a goods sale
+    ("Female flatmate needed.\nRent : 15000\nDeposit : 50000", False),
+    ("Single room replacement\nRent - 12000\nDeposit - 40000\nMaintenance - 2000", False),
     ("", False),
 ])
 def test_looks_like_sale(text, expected):
     assert looks_like_sale(text) is expected
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Looking for a female flatmate in Koramangala", "female_only"),
+    ("Female Replacement needed in a 3BHK", "female_only"),
+    ("FEMALES ONLY - fully furnished penthouse", "female_only"),
+    ("Single occupancy for female in 2BHK", "female_only"),
+    ("2BHK available, male or female welcome", "any"),        # explicit override
+    ("Flatmate wanted, gender no bar", "any"),
+    ("Spacious 2BHK entire flat near HSR", "any"),
+    ("", "any"),
+    (None, "any"),
+])
+def test_classify_audience(text, expected):
+    assert classify_audience(text) == expected

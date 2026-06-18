@@ -1,6 +1,6 @@
 import pathlib
 import sys
-import requests
+import urllib.request
 
 
 def download_images(post_id: str, urls: list[str], images_dir: str) -> list[str]:
@@ -16,9 +16,9 @@ def download_images(post_id: str, urls: list[str], images_dir: str) -> list[str]
             paths.append(str(dest))
             continue
         try:
-            resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
-            resp.raise_for_status()
-            dest.write_bytes(resp.content)
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                dest.write_bytes(resp.read())
             paths.append(str(dest))
         except Exception as e:  # noqa: BLE001 - best-effort; one bad image must not abort
             print(f"  img fail {url[:60]}: {e}", file=sys.stderr)

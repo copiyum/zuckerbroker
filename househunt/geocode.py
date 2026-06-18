@@ -36,18 +36,10 @@ def geocode(addr: str, key: str) -> tuple[float, float, str] | None:
     return loc["lat"], loc["lng"], r["geometry"].get("location_type", "?")
 
 
-def _ensure_columns(conn: sqlite3.Connection) -> None:
-    cols = {r[1] for r in conn.execute("pragma table_info(listings)")}
-    for name, typ in (("lat", "REAL"), ("lng", "REAL"), ("geo_precision", "TEXT")):
-        if name not in cols:
-            conn.execute(f"alter table listings add column {name} {typ}")
-    conn.commit()
-
-
 def run(db_path: str, key: str, limit: int = 0) -> None:
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA busy_timeout=5000")  # tolerate a stray reader
-    _ensure_columns(conn)
+    # lat/lng/geo_precision live in db.py SCHEMA; no migration needed here.
 
     # Distinct locations with no coords and not yet marked failed.
     locs = [r[0] for r in conn.execute(
