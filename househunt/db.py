@@ -3,7 +3,7 @@ import sqlite3
 COLUMNS = [
     "id", "url", "text", "bhk", "rent", "deposit", "maintenance",
     "location", "contact", "listing_type", "post_kind", "furnishing",
-    "available_from", "notes", "images", "scraped_at",
+    "available_from", "notes", "images", "scraped_at", "lat", "lng", "geo_precision",
 ]
 
 SCHEMA = """
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS listings (
   location TEXT, contact TEXT,
   listing_type TEXT, post_kind TEXT, furnishing TEXT, available_from TEXT, notes TEXT,
   images TEXT,
-  scraped_at TEXT
+  scraped_at TEXT, lat REAL, lng REAL, geo_precision TEXT
 );
 """
 
