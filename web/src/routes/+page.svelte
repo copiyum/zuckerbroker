@@ -1,7 +1,7 @@
 <script>
   import "../app.css";
   import { onMount } from "svelte";
-  import { load, store } from "$lib/data.js";
+  import { load, store } from "$lib/data.svelte.js";
   import Map from "$lib/Map.svelte";
   let mapComp = $state(null);
   let selectedId = $state(null);

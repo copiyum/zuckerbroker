@@ -1,7 +1,7 @@
 <script>
   import { onMount } from "svelte";
   import maplibregl from "maplibre-gl";
-  import { store, getListings } from "./data.js";
+  import { store, getListings } from "./data.svelte.js";
 
   let { onlist, selectedId } = $props();
   let map;
