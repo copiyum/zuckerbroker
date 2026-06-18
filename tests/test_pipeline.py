@@ -31,7 +31,9 @@ def test_extract_post_keys_match_columns(monkeypatch):
     monkeypatch.setattr(pipeline.llm, "llm_extract", fake)
     rec = pipeline.extract_post({"id": "p1", "url": "U", "text": "2bhk 30k", "images": []}, cfg)
     assert rec is not None
-    assert set(rec.keys()) == set(db.COLUMNS)
+    # extract_post produces a subset of columns; the geocoder fills lat/lng/geo_precision later.
+    assert set(rec.keys()) <= set(db.COLUMNS)
+    assert {"id", "url", "rent", "post_kind"} <= set(rec.keys())
     assert rec["rent"] == 30000
 
 
