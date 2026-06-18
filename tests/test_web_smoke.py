@@ -35,10 +35,17 @@ def test_site_smoke(tmp_path):
           hasRent: !!document.querySelector('.sidebar .item .rent'),
           chips: document.querySelectorAll('.chip').length,
         })""")
-        # clicking a sidebar item selects it (sel class) — Svelte re-renders async, so wait then check
+        # a filter dropdown must stay open when you click inside it (no bubble-close)
+        pg.evaluate("() => [...document.querySelectorAll('.chip')].find(c=>/BHK/.test(c.textContent)).click()")
+        pg.wait_for_timeout(200)
+        pg.evaluate("() => document.querySelector('.chip .pop label input').click()")
+        pg.wait_for_timeout(300)
+        filt = pg.evaluate("() => ({ popOpen: !!document.querySelector('.chip .pop'), chipOn: !!document.querySelector('.chip.on') })")
+        # clicking a sidebar item selects it AND opens the right detail panel (async re-render)
         pg.evaluate("() => document.querySelector('.sidebar .item').click()")
         pg.wait_for_timeout(500)
         sel = pg.evaluate("() => !!document.querySelector('.sidebar .item.sel')")
+        detail = pg.evaluate("() => ({ panel: !!document.querySelector('.detail'), fb: !!document.querySelector('.detail .dbtn.fb') })")
         b.close()
     assert not errs, errs
     assert info["canvas"] >= 1
@@ -46,3 +53,5 @@ def test_site_smoke(tmp_path):
     assert info["hasRent"]
     assert info["chips"] == 5
     assert sel is True
+    assert filt["popOpen"] and filt["chipOn"]      # filter usable + applied
+    assert detail["panel"] and detail["fb"]         # right detail panel with FB link

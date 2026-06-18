@@ -1,6 +1,6 @@
 <script>
   import { store, searchPlace } from "./data.svelte.js";
-  let { onchange } = $props();
+  let { onchange, onplace } = $props();
   let q = $state("");
   let open = $state(null);
 
@@ -27,7 +27,7 @@
   function search(e) {
     e.preventDefault();
     const m = searchPlace(q);
-    if (m) window.__map_flyto?.(m);
+    if (m) onplace?.(m);
   }
 </script>
 
@@ -38,7 +38,7 @@
 </form>
 <div class="chips">
   <span class="chip {active('rentMin')||active('rentMax')?'on':''}" onclick={() => open = open==='rent'?null:'rent'}>Rent ▾
-    {#if open==='rent'}<div class="pop"><div class="rentrow">
+    {#if open==='rent'}<div class="pop" onclick={(e)=>e.stopPropagation()}><div class="rentrow">
       <input type="number" placeholder="min" value={store.filters.rentMin||''} onchange={(e)=>setRent(e.target.value, store.filters.rentMax)}>
       <span>–</span>
       <input type="number" placeholder="max" value={store.filters.rentMax||''} onchange={(e)=>setRent(store.filters.rentMin, e.target.value)}>
@@ -46,7 +46,7 @@
   </span>
   {#each [["BHK","bhk",BHK],["Type","type",TYPE],["Furnishing","furnishing",FURN]] as [label,key,opts]}
     <span class="chip {active(key)?'on':''}" onclick={() => open = open===key?null:key}>{label} ▾
-      {#if open===key}<div class="pop">
+      {#if open===key}<div class="pop" onclick={(e)=>e.stopPropagation()}>
         {#each opts as [v,lbl]}
           <label><input type="checkbox" checked={(store.filters[key]||[]).includes(v)} onchange={() => toggle(key, v)}> {lbl}</label>
         {/each}

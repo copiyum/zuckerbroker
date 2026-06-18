@@ -54,3 +54,27 @@ body{font-family:Inter,system-ui,-apple-system,sans-serif;color:var(--ink);lette
 .lab .p{width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px}
 .lab small{font-weight:400;color:var(--muted)}
 .lab.sel{background:var(--blue);color:#fff}.lab.sel .p{background:#fff;color:var(--blue)}.lab.sel small{color:#cfe2ff}
+
+/* right detail panel — opens when a listing is selected */
+.detail{position:absolute;top:70px;right:16px;bottom:16px;width:384px;z-index:19;background:#fff;
+  border:1px solid rgba(0,0,0,.06);border-radius:18px;box-shadow:var(--shadow);overflow-y:auto;scrollbar-width:thin}
+.dclose{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;border:0;
+  background:rgba(0,0,0,.55);color:#fff;font-size:20px;line-height:1;cursor:pointer;z-index:2}
+.dgal{display:flex;flex-direction:column;gap:2px}
+.dgal img{width:100%;height:240px;object-fit:cover}
+.dgal .dnoimg{height:150px;display:flex;align-items:center;justify-content:center;background:#e9edf2;color:#aab2bf;font-size:13px}
+.dbody{padding:18px 20px 24px}
+.drent{font-size:27px;font-weight:700;letter-spacing:-.02em}
+.dpermo{font-size:14px;font-weight:500;color:var(--muted);margin-left:5px}
+.dtags{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
+.dtag{font-size:11px;font-weight:600;background:#eef0f3;color:var(--ink);border-radius:9999px;padding:3px 10px}
+.dtag.fem{background:#ffe3ef;color:#c2185b}
+.dloc{font-size:14px;color:#444;margin-bottom:16px;line-height:1.4}
+.dfacts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+.dfacts dt{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.dfacts dd{font-size:15px;font-weight:600;margin-top:3px}
+.dactions{display:flex;flex-direction:column;gap:9px}
+.dbtn{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:11px;
+  font-weight:600;font-size:14px;text-decoration:none}
+.dbtn.call{background:#0a8a3a;color:#fff}
+.dbtn.fb{background:#1877f2;color:#fff}
