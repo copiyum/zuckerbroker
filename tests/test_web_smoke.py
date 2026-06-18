@@ -31,16 +31,18 @@ def test_site_smoke(tmp_path):
         pg.goto(url); pg.wait_for_timeout(7000)
         info = pg.evaluate("""() => ({
           canvas: document.querySelectorAll('#map canvas').length,
-          hasCard: !!document.querySelector('.detail.front .rent'),
-          pos: document.querySelector('.pos')?.textContent,
+          items: document.querySelectorAll('.sidebar .item').length,
+          hasRent: !!document.querySelector('.sidebar .item .rent'),
           chips: document.querySelectorAll('.chip').length,
         })""")
-        pg.evaluate("() => window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight'}))")
-        pg.wait_for_timeout(400)
-        pos2 = pg.evaluate("() => document.querySelector('.pos')?.textContent")
+        # clicking a sidebar item selects it (sel class) — and would fly the map
+        sel = pg.evaluate("""() => { const it=document.querySelector('.sidebar .item'); it.click();
+          return document.querySelector('.sidebar .item.sel') ? true : false; }""")
+        pg.wait_for_timeout(300)
         b.close()
     assert not errs, errs
     assert info["canvas"] >= 1
-    assert info["hasCard"]
+    assert info["items"] > 0
+    assert info["hasRent"]
     assert info["chips"] == 4
-    assert pos2 != info["pos"]
+    assert sel is True
