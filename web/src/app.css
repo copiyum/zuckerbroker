@@ -34,7 +34,7 @@ body{font-family:Inter,system-ui,-apple-system,sans-serif;color:var(--ink);lette
 .sblist{overflow-y:auto;flex:1;scrollbar-width:thin}
 .item{padding:12px 14px;border-bottom:1px solid #f2f2f2;cursor:pointer;display:flex;gap:12px;transition:background .12s}
 .item:hover{background:#f7f9fc}
-.item.sel{background:#eef5ff}
+.item.sel{background:#fdeef0;box-shadow:inset 3px 0 0 #e0143c}
 .item .gal{flex:0 0 92px;height:78px;border-radius:10px;overflow:hidden;display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;background:#e9edf2}
 .item .gal::-webkit-scrollbar{display:none}
 .item .gal img{flex:0 0 92px;width:92px;height:78px;object-fit:cover;scroll-snap-align:start}
@@ -56,8 +56,9 @@ body{font-family:Inter,system-ui,-apple-system,sans-serif;color:var(--ink);lette
 .lab.sel{background:var(--blue);color:#fff}.lab.sel .p{background:#fff;color:var(--blue)}.lab.sel small{color:#cfe2ff}
 
 /* right detail panel — opens when a listing is selected */
-.detail{position:absolute;top:70px;right:16px;bottom:16px;width:384px;z-index:19;background:#fff;
-  border:1px solid rgba(0,0,0,.06);border-radius:18px;box-shadow:var(--shadow);overflow-y:auto;scrollbar-width:thin}
+.detail{position:fixed;top:70px;right:16px;bottom:16px;width:384px;max-width:calc(100vw - 32px);z-index:19;
+  background:#fff;border:1px solid rgba(0,0,0,.06);border-radius:18px;box-shadow:var(--shadow);
+  overflow-x:hidden;overflow-y:auto;scrollbar-width:thin}
 .dclose{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;border:0;
   background:rgba(0,0,0,.55);color:#fff;font-size:20px;line-height:1;cursor:pointer;z-index:2}
 .dgal{display:flex;flex-direction:column;gap:2px}

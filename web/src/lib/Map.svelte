@@ -3,7 +3,7 @@
   import maplibregl from "maplibre-gl";
   import { store, getListings } from "./data.svelte.js";
 
-  let { onlist, onpin } = $props();
+  let { onlist, onpin, selectedId = null } = $props();
   let map;
   const LIGHT = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 
@@ -24,6 +24,16 @@
 
   let t;
   const debounce = () => { clearTimeout(t); t = setTimeout(refresh, 200); };
+
+  // Paint ONLY the currently-selected pin red (no zoom/pan on selection).
+  $effect(() => {
+    const id = selectedId ?? "__none__";
+    if (!map || !map.getLayer || !map.getLayer("pt")) return;
+    const sel = ["==", ["get", "id"], id];
+    map.setPaintProperty("pt", "circle-color", ["case", sel, "#e0143c", "#0066cc"]);
+    map.setPaintProperty("pt", "circle-radius", ["case", sel, 11, 7]);
+    map.setPaintProperty("pt", "circle-stroke-width", ["case", sel, 3, 2]);
+  });
 
   onMount(() => {
     map = new maplibregl.Map({ container: "map", style: LIGHT, center: [77.62, 12.95], zoom: 11 });

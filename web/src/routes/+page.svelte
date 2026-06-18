@@ -12,7 +12,7 @@
   onMount(load);
   let selected = $derived(store.all.find((x) => x.id === selectedId) || null);
   function onlist(l) { list = l; }
-  function onselect(l) { selectedId = l.id; mapComp?.flyTo(l); }   // card click -> open detail + fly map
+  function onselect(l) { selectedId = l.id; }                      // card click -> open detail + red pin (NO zoom/pan)
   function onpin(id) { selectedId = id; }                          // pin click -> open detail (no pan)
 </script>
 
@@ -20,6 +20,6 @@
   <Filters onchange={() => mapComp?.applyFiltersNow()} onplace={(l) => mapComp?.flyTo(l)} />
   <div class="count">{list.length} in view · {store.total} total</div>
 </div>
-<Map bind:this={mapComp} {onlist} {onpin} />
+<Map bind:this={mapComp} {onlist} {onpin} {selectedId} />
 <Sidebar {list} {selectedId} {onselect} />
 <Detail listing={selected} onclose={() => (selectedId = null)} />
