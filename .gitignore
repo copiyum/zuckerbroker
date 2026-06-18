@@ -23,3 +23,17 @@ docs/
 
 # third-party skills (installed locally, not part of the repo)
 .agents/
+
+map_test.html
+geo_test.py
+map_preview.html
+map_preview.py
+
+# brainstorm visual companion
+.superpowers/
+
+listings_dump.json
+excalidraw.log
+.serena/
+map_preview.py
+map_preview.html
