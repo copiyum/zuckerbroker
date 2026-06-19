@@ -1,6 +1,16 @@
 <script>
-  import { store } from "./data.svelte.js";
+  import { store, toggleSaved } from "./data.svelte.js";
   let { list = [], selectedId = null, hoverId = null, onselect, onhover } = $props();
+
+  function stop(e) { e.stopPropagation(); }
+  function share(e, l) { stop(e);
+    const url = l.url || location.href;
+    if (navigator.share) navigator.share({ title: "Rental on zuckerbroker", url }).catch(() => {});
+    else navigator.clipboard?.writeText(url);
+  }
+  function directions(e, l) { stop(e);
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${l.lat},${l.lng}`, "_blank");
+  }
   const fmt = (n) => (n == null ? "—" : "₹" + Number(n).toLocaleString("en-IN"));
   const typeLabel = (t) => ({ entire_flat: "Entire flat", flatmate: "Flatmate", private_room: "Private room", pg_hostel: "PG" }[t] || "—");
   const rentLabel = (l) =>
@@ -44,6 +54,12 @@
               {#if l.images.length > 1}<span class="ph">1/{l.images.length}</span>{/if}
             {:else}<div class="noimg">no photo</div>{/if}
             {#if l.audience === 'female_only'}<span class="femtag">Female only</span>{/if}
+            <div class="qa">
+              <button class="qb {store.saved[l.id] ? 'on' : ''}" title="Save"
+                      onclick={(e) => { stop(e); toggleSaved(l.id); }}>{store.saved[l.id] ? "♥" : "♡"}</button>
+              <button class="qb" title="Share" onclick={(e) => share(e, l)}>⤴</button>
+              <button class="qb" title="Directions" onclick={(e) => directions(e, l)}>📍</button>
+            </div>
           </div>
           <div class="info">
             <div class="top">

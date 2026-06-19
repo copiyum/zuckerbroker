@@ -20,6 +20,11 @@
     onchange?.();
   }
   function active(key) { return !!store.filters[key]; }
+  let activeCount = $derived(
+    (store.filters.rentMin || store.filters.rentMax ? 1 : 0)
+    + ["bhk", "type", "furnishing"].filter((k) => store.filters[k]?.length).length
+    + (store.filters.hideFemaleOnly ? 1 : 0));
+  function clearAll() { store.filters = {}; open = null; onchange?.(); }
   function toggleFemale() {
     store.filters.hideFemaleOnly = store.filters.hideFemaleOnly ? undefined : true;
     onchange?.();
@@ -54,4 +59,5 @@
     </span>
   {/each}
   <span class="chip {store.filters.hideFemaleOnly?'on':''}" onclick={toggleFemale}>Hide female-only</span>
+  {#if activeCount}<span class="chip clear" onclick={clearAll}>Clear ({activeCount})</span>{/if}
 </div>

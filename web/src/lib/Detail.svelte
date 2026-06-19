@@ -1,6 +1,20 @@
 <script>
   import { fly } from "svelte/transition";
+  import { store, toggleSaved } from "./data.svelte.js";
   let { listing = null, onclose } = $props();
+  let osm = $derived.by(() => {
+    if (!listing?.lat) return null;
+    const d = 0.004, lo = listing.lng, la = listing.lat;
+    return `https://www.openstreetmap.org/export/embed.html?bbox=${lo - d},${la - d},${lo + d},${la + d}&layer=mapnik&marker=${la},${lo}`;
+  });
+  function share() {
+    const url = listing?.url || location.href;
+    if (navigator.share) navigator.share({ title: "Rental on zuckerbroker", url }).catch(() => {});
+    else navigator.clipboard?.writeText(url);
+  }
+  function directions() {
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${listing.lat},${listing.lng}`, "_blank");
+  }
   const fmt = (n) => (n == null ? "—" : "₹" + Number(n).toLocaleString("en-IN"));
   const typeLabel = (t) => ({ entire_flat: "Entire flat", flatmate: "Flatmate", private_room: "Private room", pg_hostel: "PG / Hostel" }[t] || "—");
   let rentText = $derived(
@@ -60,6 +74,24 @@
         <div><dt>Furnishing</dt><dd>{listing.furnishing || "—"}</dd></div>
         <div><dt>Available</dt><dd>{listing.available_from || "—"}</dd></div>
       </dl>
+
+      {#if listing.description}
+        <div class="dsec">Description</div>
+        <p class="ddesc">{listing.description}</p>
+      {/if}
+
+      {#if osm}
+        <div class="dsec">Location</div>
+        <iframe class="dmap" title="location" src={osm} loading="lazy"></iframe>
+      {/if}
+
+      <div class="dquick">
+        <button class="qb2 {store.saved[listing.id] ? 'on' : ''}" onclick={() => toggleSaved(listing.id)}>
+          {store.saved[listing.id] ? "♥ Saved" : "♡ Save"}</button>
+        <button class="qb2" onclick={share}>⤴ Share</button>
+        <button class="qb2" onclick={directions}>📍 Directions</button>
+      </div>
+
       <div class="dactions">
         {#if wa}
           <a class="dbtn wa" href={wa} target="_blank" rel="noopener">

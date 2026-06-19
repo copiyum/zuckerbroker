@@ -3,9 +3,13 @@
   import maplibregl from "maplibre-gl";
   import { store, getListings } from "./data.svelte.js";
 
-  let { onlist, onpin, onhover, selectedId = null, hoverId = null } = $props();
+  let { onlist, onpin, onhover, selectedId = null, hoverId = null, theme = "light" } = $props();
   let map;
-  const LIGHT = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+  const STYLES = {
+    light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+    dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+  };
+  let appliedTheme = theme;
 
   // compact money: 30000 -> ₹30k, 125000 -> ₹1.3L
   const pill = (n) =>
@@ -86,17 +90,30 @@
   let t;
   const debounce = () => { clearTimeout(t); t = setTimeout(refresh, 200); };
 
+  // source + invisible tiling layer (re-added after every setStyle, which wipes them)
+  function ensureSource() {
+    if (map.getSource("listings")) return;
+    map.addSource("listings", { type: "geojson", data: gj(store.list), cluster: true, clusterRadius: 60, clusterMaxZoom: 14 });
+    map.addLayer({ id: "_src", type: "circle", source: "listings", paint: { "circle-radius": 0, "circle-opacity": 0 } });
+  }
+
   $effect(() => { selectedId; hoverId; if (map) applyStates(); });
   // re-render the source once listings.json finishes loading (data arrives after map 'load')
   $effect(() => { if (store.all.length && map && map.getSource("listings")) refresh(); });
+  // light/dark switch — setStyle wipes sources, so re-add + refresh on style.load
+  $effect(() => {
+    const t = theme;                          // read first so it's always tracked
+    if (!map || t === appliedTheme) return;
+    appliedTheme = t;
+    map.setStyle(STYLES[t]);
+    map.once("style.load", () => { ensureSource(); refresh(); });
+  });
 
   onMount(() => {
-    map = new maplibregl.Map({ container: "map", style: LIGHT, center: [77.62, 12.95], zoom: 11 });
+    map = new maplibregl.Map({ container: "map", style: STYLES[theme], center: [77.62, 12.95], zoom: 11 });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
     map.on("load", () => {
-      map.addSource("listings", { type: "geojson", data: gj([]), cluster: true, clusterRadius: 60, clusterMaxZoom: 14 });
-      // invisible layer: forces MapLibre to tile the source so querySourceFeatures() works (markers are HTML)
-      map.addLayer({ id: "_src", type: "circle", source: "listings", paint: { "circle-radius": 0, "circle-opacity": 0 } });
+      ensureSource();
       map.on("render", () => { if (map.isSourceLoaded("listings")) updateMarkers(); });
       map.on("moveend", debounce);
       refresh();

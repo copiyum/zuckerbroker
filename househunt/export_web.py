@@ -28,6 +28,9 @@ def export(db_path, out_path, images_src="images", images_dst="web/static/images
     for r in rows:
         rec = {k: r[k] for k in FIELDS}
         rec["dup_count"] = r["dup_count"] if r["is_canonical"] == 1 else 1
+        # the raw FB post body, trimmed — fills the detail panel with real content
+        txt = (r["text"] or "").strip()
+        rec["description"] = txt[:600] + ("…" if len(txt) > 600 else "") if txt else None
         try:
             imgs = json.loads(r["images"] or "[]")
         except Exception:

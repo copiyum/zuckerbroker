@@ -3,7 +3,7 @@
   import { onMount } from "svelte";
   import { Tween } from "svelte/motion";
   import { cubicOut } from "svelte/easing";
-  import { load, store } from "$lib/data.svelte.js";
+  import { load, store, setTheme } from "$lib/data.svelte.js";
   import Map from "$lib/Map.svelte";
   import Sidebar from "$lib/Sidebar.svelte";
   import Detail from "$lib/Detail.svelte";
@@ -27,7 +27,10 @@
 <div class="nav">
   <Filters onchange={() => mapComp?.applyFiltersNow()} onplace={(l) => mapComp?.flyTo(l)} />
   <div class="count">{Math.round(count.current)} in view · {store.total} total</div>
+  <button class="theme" title="Toggle map theme" onclick={() => setTheme(store.theme === "dark" ? "light" : "dark")}>
+    {store.theme === "dark" ? "☀︎" : "☾"}
+  </button>
 </div>
-<Map bind:this={mapComp} {onlist} {onpin} {onhover} {selectedId} {hoverId} />
+<Map bind:this={mapComp} {onlist} {onpin} {onhover} {selectedId} {hoverId} theme={store.theme} />
 <Sidebar {list} {selectedId} {hoverId} {onselect} {onhover} />
 <Detail listing={selected} onclose={() => (selectedId = null)} />
