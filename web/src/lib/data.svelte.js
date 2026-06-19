@@ -1,10 +1,11 @@
 import { inBbox, applyFilters, byDistance, matchPlace } from "./filters.js";
 
-export const store = $state({ all: [], list: [], filters: {}, selectedId: null, total: 0 });
+export const store = $state({ all: [], list: [], filters: {}, selectedId: null, total: 0, loaded: false });
 
 export async function load() {
   store.all = await fetch("/listings.json").then((r) => r.json());
   store.total = store.all.length;
+  store.loaded = true;
 }
 export function getListings(bbox, filters, center) {
   let l = store.all.filter((x) => inBbox(x, bbox));

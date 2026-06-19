@@ -3,17 +3,78 @@
   import maplibregl from "maplibre-gl";
   import { store, getListings } from "./data.svelte.js";
 
-  let { onlist, onpin, selectedId = null } = $props();
+  let { onlist, onpin, onhover, selectedId = null, hoverId = null } = $props();
   let map;
   const LIGHT = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+
+  // compact money: 30000 -> ₹30k, 125000 -> ₹1.3L
+  const pill = (n) =>
+    n == null ? "—"
+    : n >= 100000 ? "₹" + (n / 100000).toFixed(n % 100000 ? 1 : 0) + "L"
+    : n >= 1000 ? "₹" + Math.round(n / 1000) + "k"
+    : "₹" + n;
 
   function bbox() { const b = map.getBounds(); return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]; }
   function gj(list) {
     return { type: "FeatureCollection", features: list.map((l) => ({
       type: "Feature", geometry: { type: "Point", coordinates: [l.lng, l.lat] },
-      properties: { id: l.id } })) };
+      properties: { id: l.id, label: pill(l.rent) } })) };
   }
-  // map move only updates the in-view list (sidebar). It never selects or pans — keeps panning smooth.
+
+  const markers = {};          // key -> { marker, el }
+  let onScreen = {};
+
+  function priceEl(id, label) {
+    const el = document.createElement("div");
+    el.className = "lab";
+    el.dataset.id = id;
+    el.innerHTML = `<span>${label}</span>`;
+    el.addEventListener("click", (e) => { e.stopPropagation(); onpin?.(id); });
+    el.addEventListener("mouseenter", () => onhover?.(id));
+    el.addEventListener("mouseleave", () => onhover?.(null));
+    return el;
+  }
+  function clusterEl(cid, count, coords) {
+    const el = document.createElement("div");
+    el.className = "clus";
+    el.textContent = count >= 1000 ? (count / 1000).toFixed(1) + "k" : count;
+    el.addEventListener("click", () => {
+      map.getSource("listings").getClusterExpansionZoom(cid).then((z) =>
+        map.easeTo({ center: coords, zoom: z, duration: 600 }));
+    });
+    return el;
+  }
+
+  function applyStates() {
+    for (const k in onScreen) {
+      const el = onScreen[k].el;
+      if (!el.classList.contains("lab")) continue;
+      const sel = k === selectedId, hov = k === hoverId;
+      el.classList.toggle("sel", sel);
+      el.classList.toggle("hov", hov);
+      el.style.zIndex = sel ? "4" : hov ? "3" : "";
+    }
+  }
+
+  function updateMarkers() {
+    const next = {};
+    for (const f of map.querySourceFeatures("listings")) {
+      const p = f.properties, coords = f.geometry.coordinates;
+      const key = p.cluster ? "c" + p.cluster_id : p.id;
+      let m = markers[key];
+      if (!m) {
+        const el = p.cluster ? clusterEl(p.cluster_id, p.point_count, coords) : priceEl(p.id, p.label);
+        m = markers[key] = { el, marker: new maplibregl.Marker({ element: el }).setLngLat(coords) };
+      }
+      next[key] = m;
+      if (!onScreen[key]) m.marker.addTo(map);
+    }
+    for (const k in onScreen) if (!next[k]) onScreen[k].marker.remove();
+    onScreen = next;
+    applyStates();
+  }
+
+  // map move updates only the in-view list (sidebar) + source; never selects/pans (smooth)
   function refresh() {
     store.list = getListings(bbox(), store.filters);
     map.getSource("listings")?.setData(gj(store.list));
@@ -25,36 +86,18 @@
   let t;
   const debounce = () => { clearTimeout(t); t = setTimeout(refresh, 200); };
 
-  // Paint ONLY the currently-selected pin red (no zoom/pan on selection).
-  $effect(() => {
-    const id = selectedId ?? "__none__";
-    if (!map || !map.getLayer || !map.getLayer("pt")) return;
-    const sel = ["==", ["get", "id"], id];
-    map.setPaintProperty("pt", "circle-color", ["case", sel, "#e0143c", "#0066cc"]);
-    map.setPaintProperty("pt", "circle-radius", ["case", sel, 11, 7]);
-    map.setPaintProperty("pt", "circle-stroke-width", ["case", sel, 3, 2]);
-  });
+  $effect(() => { selectedId; hoverId; if (map) applyStates(); });
+  // re-render the source once listings.json finishes loading (data arrives after map 'load')
+  $effect(() => { if (store.all.length && map && map.getSource("listings")) refresh(); });
 
   onMount(() => {
     map = new maplibregl.Map({ container: "map", style: LIGHT, center: [77.62, 12.95], zoom: 11 });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
     map.on("load", () => {
-      map.addSource("listings", { type: "geojson", data: gj([]), cluster: true, clusterRadius: 50, clusterMaxZoom: 14 });
-      map.addLayer({ id: "clusters", type: "circle", source: "listings", filter: ["has", "point_count"],
-        paint: { "circle-color": "#0066cc", "circle-opacity": 0.9,
-          "circle-radius": ["step", ["get", "point_count"], 16, 50, 22, 200, 30] } });
-      map.addLayer({ id: "cluster-count", type: "symbol", source: "listings", filter: ["has", "point_count"],
-        layout: { "text-field": ["get", "point_count_abbreviated"], "text-size": 12, "text-font": ["Open Sans Regular"] },
-        paint: { "text-color": "#fff" } });
-      map.addLayer({ id: "pt", type: "circle", source: "listings", filter: ["!", ["has", "point_count"]],
-        paint: { "circle-color": "#0066cc", "circle-radius": 7, "circle-stroke-width": 2, "circle-stroke-color": "#fff" } });
-      map.on("click", "clusters", (e) => {
-        const f = map.queryRenderedFeatures(e.point, { layers: ["clusters"] })[0];
-        map.getSource("listings").getClusterExpansionZoom(f.properties.cluster_id).then((z) =>
-          map.easeTo({ center: f.geometry.coordinates, zoom: z })); });
-      map.on("click", "pt", (e) => { onpin?.(e.features[0].properties.id); });
-      map.on("mouseenter", "clusters", () => (map.getCanvas().style.cursor = "pointer"));
-      map.on("mouseenter", "pt", () => (map.getCanvas().style.cursor = "pointer"));
+      map.addSource("listings", { type: "geojson", data: gj([]), cluster: true, clusterRadius: 60, clusterMaxZoom: 14 });
+      // invisible layer: forces MapLibre to tile the source so querySourceFeatures() works (markers are HTML)
+      map.addLayer({ id: "_src", type: "circle", source: "listings", paint: { "circle-radius": 0, "circle-opacity": 0 } });
+      map.on("render", () => { if (map.isSourceLoaded("listings")) updateMarkers(); });
       map.on("moveend", debounce);
       refresh();
     });
