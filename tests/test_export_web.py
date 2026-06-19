@@ -1,9 +1,13 @@
-import json, sqlite3
-from househunt import export_web, db as dbm
+import json
+import sqlite3
+
+from househunt import db as dbm
+from househunt import export_web
 
 
 def _seed(db):
-    conn = sqlite3.connect(db); dbm.init_db(conn)
+    conn = sqlite3.connect(db)
+    dbm.init_db(conn)
     base = dict(maintenance=None, contact=None, notes=None, available_from=None, scraped_at="t")
     dbm.upsert_listing(conn, {**base, "id": "a", "url": "u", "text": "DROP ME", "bhk": "2 BHK",
         "rent": 30000, "deposit": 100000, "location": "HSR", "listing_type": "entire_flat",
@@ -19,7 +23,8 @@ def _seed(db):
 
 
 def test_export(tmp_path):
-    db = str(tmp_path / "t.db"); _seed(db)
+    db = str(tmp_path / "t.db")
+    _seed(db)
     out = tmp_path / "listings.json"
     n = export_web.export(db, str(out), images_src=str(tmp_path / "noimg"), images_dst=str(tmp_path / "wimg"))
     data = json.loads(out.read_text())
