@@ -95,7 +95,7 @@ def ingest(raw_path: str, cfg: Config, workers: int = 8) -> int:
 def extract(cfg: Config, workers: int = 4) -> int:
     """Stage 3 (after dedup): LLM-fill canonical rows that have no post_kind yet.
     Reposts (is_canonical=0) are skipped, so the LLM never sees them. Returns rows filled."""
-    if not cfg.llm_api_key:
+    if cfg.llm_backend != "mlx" and not cfg.llm_api_key:
         sys.exit("LLM key required: set LLM_API_KEY (regex fallback was removed)")
     conn = db.connect(cfg.db_path)
     db.init_db(conn)
@@ -137,7 +137,7 @@ def extract(cfg: Config, workers: int = 4) -> int:
 
 def _apply_overrides(cfg: Config, db_path: str | None, images: str | None) -> Config:
     return Config(cfg.llm_base_url, cfg.llm_api_key, cfg.llm_model,
-                  db_path or cfg.db_path, images or cfg.images_dir)
+                  db_path or cfg.db_path, images or cfg.images_dir, cfg.llm_backend)
 
 
 def main(argv=None) -> None:

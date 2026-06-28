@@ -17,6 +17,8 @@ PRICES: dict[str, tuple[float, float]] = {
     "gpt-4.1-nano": (0.10, 0.40),
     # MiniMax (approx — verify on the MiniMax dashboard)
     "MiniMax-Text-01": (0.20, 1.10),
+    # Local on-device MLX (free)
+    "Qwen2.5-3B-Instruct-4bit": (0.0, 0.0),
 }
 
 

@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import os
 import random
 import re
 import sys
@@ -104,7 +105,7 @@ _DIAG_JS = r"""
 
 
 def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
-           headless: bool = False, login_wait: float = 120) -> int:
+           headless: bool = False, login_wait: float = 120, start_group: int = 1) -> int:
     """Scroll each group for `minutes`, collect posts, dedup within run, write out_path.
     Returns number of posts written. Requires: playwright install chromium."""
     from playwright.sync_api import sync_playwright
@@ -113,13 +114,33 @@ def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
     log.info("scrape start | groups=%d minutes=%.1f headless=%s profile=%s login_wait=%.0fs",
              len(groups), minutes, headless, profile_dir, login_wait)
 
+    # Resume support: load any previously-scraped posts so we don't re-collect
+    # them, and skip groups already completed (tracked in a .done sidecar file).
+    done_path = out_path + ".done"
     seen: dict[str, dict] = {}
+    if os.path.exists(out_path):
+        try:
+            seen = {p["id"]: p for p in json.load(open(out_path))}
+            log.info("resuming | loaded %d existing posts from %s", len(seen), out_path)
+        except (json.JSONDecodeError, KeyError):
+            log.warning("could not parse existing %s; starting fresh", out_path)
+    done_groups: set[int] = set()
+    if os.path.exists(done_path):
+        done_groups = {int(i) for i in open(done_path).read().split() if i.strip()}
+        if done_groups:
+            log.info("resuming | skipping %d completed groups: %s",
+                     len(done_groups), sorted(done_groups))
 
     def flush() -> None:
         # ponytail: rewrites the whole file each call. Fine at this scale (a few
         # thousand posts = a few MB). Switch to JSONL append if it ever gets huge.
         with open(out_path, "w") as fh:
             json.dump(list(seen.values()), fh, ensure_ascii=False, indent=2)
+
+    def mark_done(gi: int) -> None:
+        done_groups.add(gi)
+        with open(done_path, "a") as fh:
+            fh.write(f"{gi}\n")
 
     with sync_playwright() as p:
         ctx = p.chromium.launch_persistent_context(profile_dir, headless=headless)
@@ -144,6 +165,9 @@ def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
 
         try:
             for gi, url in enumerate(groups, 1):
+                if gi in done_groups or gi < start_group:
+                    log.info("[group %d/%d] skipping (done or before --start-group %d)", gi, len(groups), start_group)
+                    continue
                 group_start = time.monotonic()
                 group_before = len(seen)
                 log.info("[group %d/%d] navigating → %s", gi, len(groups), url)
@@ -228,6 +252,23 @@ def scrape(groups: list[str], minutes: float, profile_dir: str, out_path: str,
                 if group_new == 0:
                     log.warning("[group %d/%d] collected ZERO posts — re-run with --debug to see joinWall/loginWall/article counts", gi, len(groups))
                 flush()  # checkpoint after each group
+                mark_done(gi)
+
+                # Refresh the browser to shed DOM bloat that accumulated over
+                # thousands of articles (the cycle-98 "Target crashed" OOM).
+                # Close the page and open a fresh one; clear disk cache via CDP.
+                # Auth cookies live on the persistent context, so login survives.
+                try:
+                    page.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                page = ctx.new_page()
+                try:
+                    cdp = ctx.new_cdp_session(page)
+                    cdp.send("Network.clearBrowserCache")
+                except Exception as e:  # noqa: BLE001
+                    log.debug("[group %d/%d] cache clear failed: %s", gi, len(groups), e)
+                log.debug("[group %d/%d] browser refreshed | new page + cache cleared", gi, len(groups))
         finally:
             flush()  # always persist what we have, even on Ctrl-C / crash
             ctx.close()
@@ -247,6 +288,8 @@ def main(argv=None) -> None:
     ap.add_argument("--login-wait", type=float, default=120,
                     help="seconds to wait for manual login before scraping")
     ap.add_argument("--debug", action="store_true", help="verbose per-cycle logging")
+    ap.add_argument("--start-group", type=int, default=1,
+                    help="skip groups before this 1-based index (manual resume after a crash)")
     args = ap.parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.INFO,
@@ -257,7 +300,8 @@ def main(argv=None) -> None:
     groups = read_groups(args.groups)
     if not groups:
         sys.exit(f"no group URLs in {args.groups}")
-    scrape(groups, args.minutes, args.profile, args.out, args.headless, args.login_wait)
+    scrape(groups, args.minutes, args.profile, args.out, args.headless,
+           args.login_wait, args.start_group)
 
 
 if __name__ == "__main__":
