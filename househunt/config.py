@@ -23,10 +23,23 @@ class Config:
 
 
 def load_config() -> Config:
-    backend = os.environ.get("LLM_BACKEND", "mlx")
+    # Explicit backend always wins. Otherwise auto-detect in priority order:
+    #   - LLM_MODEL with a colon (e.g. "qwen2.5:3b") is an ollama tag -> openai path
+    #   - MINIMAX_API_KEY in env -> remote MiniMax via openai-compatible SDK
+    #   - else -> on-device MLX
+    model_env = os.environ.get("LLM_MODEL")
+    if os.environ.get("LLM_BACKEND"):
+        backend = os.environ.get("LLM_BACKEND")
+    elif model_env and ":" in model_env:
+        backend = "openai"
+    elif os.environ.get("MINIMAX_API_KEY") or os.environ.get("LLM_API_KEY"):
+        backend = "openai"
+    else:
+        backend = "mlx"
     return Config(
         llm_base_url=os.environ.get("LLM_BASE_URL", DEFAULT_BASE_URL),
-        llm_api_key=os.environ.get("LLM_API_KEY") or None,
+        llm_api_key=(os.environ.get("LLM_API_KEY")
+                     or os.environ.get("MINIMAX_API_KEY") or None),
         llm_model=os.environ.get(
             "LLM_MODEL", DEFAULT_MLX_MODEL if backend == "mlx" else DEFAULT_MODEL),
         db_path=os.environ.get("HOUSEHUNT_DB", "listings.db"),

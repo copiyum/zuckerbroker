@@ -27,6 +27,29 @@ SYSTEM_PROMPT = (
 
 _FENCED_RE = re.compile(r'```(?:json)?\s*\n(.*?)\n\s*```', re.I | re.DOTALL)
 _BARE_OBJ_RE = re.compile(r'\{.*\}', re.DOTALL)
+# Tolerant fallback: pulls individual "key": value pairs out of malformed/truncated
+# JSON. Salvages bhk/rent/location etc. even when the model loops in a notes field
+# or truncates mid-object (small models do this under greedy decoding).
+_PAIR_RE = re.compile(
+    r'"(' + '|'.join(FIELD_KEYS) + r')"\s*:\s*'
+    r'(null|true|false|-?\d+(?:\.\d+)?|"(?:[^"\\]|\\.)*")',
+    re.DOTALL)
+
+
+def _tolerant_parse(content: str) -> dict:
+    """Extract whatever complete key-value pairs exist, ignoring structural damage.
+    Raises ValueError if zero pairs found (so total garbage still retries)."""
+    out = {k: None for k in FIELD_KEYS}
+    found = 0
+    for m in _PAIR_RE.finditer(content):
+        try:
+            out[m.group(1)] = json.loads(m.group(2), strict=False)
+            found += 1
+        except json.JSONDecodeError:
+            pass
+    if not found:
+        raise ValueError(f"No JSON found in LLM response: {content!r}")
+    return out
 
 
 def _parse_content(content: str) -> dict:
@@ -38,10 +61,17 @@ def _parse_content(content: str) -> dict:
         # Fall back to the first bare {...} block in the response.
         m = _BARE_OBJ_RE.search(content)
         if not m:
-            raise ValueError(f"No JSON found in LLM response: {content!r}")
+            return _tolerant_parse(content)  # no braces at all — try per-key salvage
         raw = m.group(0)
-    data = json.loads(raw)
-    return {k: data.get(k) for k in FIELD_KEYS}
+    try:
+        data = json.loads(raw, strict=False)  # strict=False: allow raw control chars (newlines/tabs) inside string values — MLX emits these unescaped
+        if not isinstance(data, dict):  # model returned null / a list / a bare string — no fields
+            return _tolerant_parse(content)
+        return {k: data.get(k) for k in FIELD_KEYS}
+    except json.JSONDecodeError:
+        # Structural damage (truncation, missing colons, repetition loops) —
+        # salvage whatever complete key-value pairs survived.
+        return _tolerant_parse(content)
 
 
 @functools.lru_cache(maxsize=8)

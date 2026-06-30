@@ -1,6 +1,6 @@
 # zuckerbroker
 
-Scrapes rental posts out of Facebook groups, makes an LLM read the messy bilingual
+scrapes rental posts out of Facebook groups, makes an LLM read the messy bilingual
 chaos, and files everything into a tidy SQLite database with the photos attached.
 
 ## How it works

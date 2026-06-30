@@ -52,10 +52,19 @@ def extract_post(post: dict, cfg: Config, tracker: CostTracker | None = None) ->
     else:
         try:
             fields = llm.llm_extract(text, cfg, tracker=tracker)
-        except Exception as e:  # noqa: BLE001 - terminal LLM failure -> skip, retry next run
+        except ValueError:
+            # Model returned prose/garbage with no extractable JSON (a refusal like
+            # "I cannot generate JSON for this"). Tag 'other' so it's done, not
+            # retried forever — these are non-rental posts the regex sale filter missed.
+            record.update({k: None for k in llm.FIELD_KEYS})
+            record["post_kind"] = "other"
+            return record
+        except Exception as e:  # noqa: BLE001 - infra failure (model load, network) -> skip, retry next run
             print(f"  llm fail {post.get('id')}: {e}; SKIPPED (will retry next run)", file=sys.stderr)
             return None
         record.update(fields)
+        if not record.get("post_kind"):  # valid JSON but unclassified -> don't retry forever
+            record["post_kind"] = "other"
         record["bhk"] = normalize_bhk(record.get("bhk"))
     return record
 
