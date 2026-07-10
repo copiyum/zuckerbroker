@@ -22,7 +22,18 @@ SYSTEM_PROMPT = (
     "or 'other' (complaints, ads, discussion, anything not a rental). "
     "Return bhk as 'N BHK' (e.g. '2 BHK'), '1 RK', or 'Studio'. "
     "contact is a phone number string or null. "
-    "Use null for any field not present. Do not invent values."
+    "Use null for any field not present. Do not invent values.\n\n"
+    "Examples:\n"
+    "Post: \"2BHK fully furnished flat for rent in HSR Layout. 32k rent, 60k deposit. "
+    "Maintenance 2k extra. Available immediately. Call 9876543210\"\n"
+    'Output: {"bhk": "2 BHK", "rent": 32000, "deposit": 60000, "maintenance": 2000, '
+    '"location": "HSR Layout", "contact": "9876543210", "listing_type": "entire_flat", '
+    '"post_kind": "offer", "furnishing": "furnished", "available_from": "immediately", "notes": null}\n\n'
+    "Post: \"Looking for a flatmate for my 3BHK in Indiranagar. Rent 12k per person. "
+    "DM for details\"\n"
+    'Output: {"bhk": "3 BHK", "rent": 12000, "deposit": null, "maintenance": null, '
+    '"location": "Indiranagar", "contact": null, "listing_type": "flatmate", '
+    '"post_kind": "offer", "furnishing": null, "available_from": null, "notes": null}'
 )
 
 _FENCED_RE = re.compile(r'```(?:json)?\s*\n(.*?)\n\s*```', re.I | re.DOTALL)
@@ -129,12 +140,56 @@ def _llm_extract_mlx(text: str, cfg: Config, tracker=None) -> dict:
     return _parse_content(content)
 
 
+@functools.lru_cache(maxsize=2)
+def _vertex_client(project: str, location: str):
+    """Cached Vertex AI client via google-genai SDK.
+    Picks up GOOGLE_APPLICATION_CREDENTIALS from the environment automatically."""
+    from google import genai
+    return genai.Client(vertexai=True, project=project, location=location)
+
+
+def _vertex_usage(usage) -> tuple[int, int]:
+    if not usage:
+        return 0, 0
+    return (usage.prompt_token_count or 0), (usage.candidates_token_count or 0)
+
+
+def _llm_extract_vertex(text: str, cfg: Config, tracker=None) -> dict:
+    """Vertex AI extraction via google-genai SDK (Gemini models).
+    Thread-safe — no lock needed. The SDK handles auth via
+    GOOGLE_APPLICATION_CREDENTIALS (service account JSON)."""
+    from google.genai import types as genai_types
+    from google.genai import errors as genai_errors
+    client = _vertex_client(cfg.vertex_project_id, cfg.vertex_location)
+    try:
+        resp = client.models.generate_content(
+            model=cfg.llm_model,
+            contents=text or "",
+            config=genai_types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                temperature=0,
+                max_output_tokens=2000,
+            ),
+        )
+    except genai_errors.APIError as e:
+        raise RuntimeError(f"Vertex AI API error: {e.code} {e.message}") from e
+    content = resp.text
+    if tracker is not None:
+        in_tok, out_tok = _vertex_usage(getattr(resp, "usage_metadata", None))
+        tracker.add(cfg.llm_model, in_tok, out_tok)
+    return _parse_content(content)
+
+
 def llm_extract(text: str, cfg: Config, tracker=None) -> dict:
-    """Extract the field dict. MLX backend -> on-device Qwen; otherwise the OpenAI
-    SDK (MiniMax/OpenAI), with Codex models on /v1/responses and others on chat.
-    The SDK retries 429/5xx with backoff. Raises on terminal failure (caller skips)."""
+    """Extract the field dict. Routes to the backend selected in Config:
+      "mlx"     -> on-device Qwen via mlx_lm
+      "vertex"  -> Vertex AI Gemini via google-genai SDK (service account auth)
+      "openai"  -> OpenAI-compatible SDK (MiniMax, OpenAI, ollama, etc.)
+    The SDK retries transient errors. Raises on terminal failure (caller skips)."""
     if cfg.llm_backend == "mlx":
         return _llm_extract_mlx(text, cfg, tracker)
+    if cfg.llm_backend == "vertex":
+        return _llm_extract_vertex(text, cfg, tracker)
     client = _client(cfg.llm_base_url, cfg.llm_api_key)
     if _use_responses(cfg.llm_model):
         resp = client.responses.create(

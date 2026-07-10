@@ -1,7 +1,8 @@
 <script>
-  import { fly } from "svelte/transition";
+  import { fly, fade } from "svelte/transition";
   import { store, toggleSaved } from "./data.svelte.js";
-  let { listing = null, onclose } = $props();
+  let { listing = null, onclose, ontoast } = $props();
+
   let osm = $derived.by(() => {
     if (!listing?.lat) return null;
     const d = 0.004, lo = listing.lng, la = listing.lat;
@@ -10,7 +11,7 @@
   function share() {
     const url = listing?.url || location.href;
     if (navigator.share) navigator.share({ title: "Rental on zuckerbroker", url }).catch(() => {});
-    else navigator.clipboard?.writeText(url);
+    else navigator.clipboard?.writeText(url).then(() => ontoast?.("Link copied"));
   }
   function directions() {
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${listing.lat},${listing.lng}`, "_blank");
@@ -28,7 +29,10 @@
   });
 
   let idx = $state(0);
-  $effect(() => { listing; idx = 0; });          // reset carousel on new listing
+  let descExpanded = $state(false);
+  let imgLoaded = $state({});
+
+  $effect(() => { listing; idx = 0; descExpanded = false; imgLoaded = {}; });
   function go(d) { idx = Math.max(0, Math.min(imgs.length - 1, idx + d)); }
   function key(e) {
     if (!listing) return;
@@ -36,21 +40,28 @@
     else if (e.key === "ArrowLeft") go(-1);
     else if (e.key === "Escape") onclose?.();
   }
+  function onImgLoad(src) { imgLoaded[src] = true; }
 </script>
 
 <svelte:window onkeydown={key} />
 
 {#if listing}
-  <div class="detail" transition:fly={{ x: 420, duration: 260 }}>
+  <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+  <div class="mobile-overlay" role="presentation" onclick={onclose}></div>
+  <div class="detail" transition:fly={{ x: 420, duration: 260, easing: (t) => 1 - Math.pow(1 - t, 3) }}>
     <div class="dgal">
       {#if imgs.length}
         <div class="track" style="transform:translateX(-{idx * 100}%)">
-          {#each imgs as src}<img loading="lazy" src={src} alt="" />{/each}
+          {#each imgs as src}
+            <img loading="lazy" src={src} alt=""
+                 style={imgLoaded[src] ? '' : 'opacity:0'}
+                 onload={() => onImgLoad(src)} />
+          {/each}
         </div>
         {#if imgs.length > 1}
           <button class="nav prev" onclick={() => go(-1)} disabled={idx === 0} aria-label="Previous">‹</button>
           <button class="nav next" onclick={() => go(1)} disabled={idx === imgs.length - 1} aria-label="Next">›</button>
-          <div class="dots">{#each imgs as _, i}<span class="dot {i === idx ? 'on' : ''}" onclick={() => (idx = i)}></span>{/each}</div>
+          <div class="dots">{#each imgs as _, i}<span class="dot {i === idx ? 'on' : ''}" onclick={() => (idx = i)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && (idx = i)}></span>{/each}</div>
         {/if}
       {:else}<div class="dnoimg">no photos</div>{/if}
       <button class="dclose" onclick={() => onclose?.()} aria-label="Close">×</button>
@@ -62,7 +73,7 @@
 
     <div class="dbody">
       <div class="dtags">
-        <span class="type {listing.listing_type === 'entire_flat' ? 'flat' : ''}">{typeLabel(listing.listing_type)}</span>
+        {#if listing.listing_type}<span class="type {listing.listing_type === 'entire_flat' ? 'flat' : ''}">{typeLabel(listing.listing_type)}</span>{/if}
         {#if listing.bhk}<span class="dtag">{listing.bhk}</span>{/if}
         {#if listing.audience === 'female_only'}<span class="dtag fem">Female only</span>{/if}
         {#if listing.dup_count > 1}<span class="dtag">{listing.dup_count} brokers</span>{/if}
@@ -77,7 +88,12 @@
 
       {#if listing.description}
         <div class="dsec">Description</div>
-        <p class="ddesc">{listing.description}</p>
+        <p class="ddesc {descExpanded ? '' : 'collapsed'}">{listing.description}</p>
+        {#if listing.description.length > 300}
+          <button class="expand-btn" onclick={() => descExpanded = !descExpanded}>
+            {descExpanded ? 'Show less' : 'Show more'}
+          </button>
+        {/if}
       {/if}
 
       {#if osm}
@@ -86,8 +102,9 @@
       {/if}
 
       <div class="dquick">
-        <button class="qb2 {store.saved[listing.id] ? 'on' : ''}" onclick={() => toggleSaved(listing.id)}>
-          {store.saved[listing.id] ? "♥ Saved" : "♡ Save"}</button>
+        <button class="qb2 {store.saved[listing.id] ? 'on' : ''}" onclick={() => { toggleSaved(listing.id); ontoast?.(store.saved[listing.id] ? "Saved" : "Removed"); }}>
+          {store.saved[listing.id] ? "♥ Saved" : "♡ Save"}
+        </button>
         <button class="qb2" onclick={share}>⤴ Share</button>
         <button class="qb2" onclick={directions}>📍 Directions</button>
       </div>
@@ -99,7 +116,9 @@
             WhatsApp
           </a>
         {/if}
-        {#if listing.contact}<a class="dbtn call" href="tel:{listing.contact}">📞 {listing.contact}</a>{/if}
+        {#if listing.contact}
+          <a class="dbtn call" href="tel:{listing.contact}">📞 {listing.contact}</a>
+        {/if}
         {#if listing.url}
           <a class="dbtn fb" href={listing.url} target="_blank" rel="noopener">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M22 12a10 10 0 10-11.56 9.88v-6.99H7.9V12h2.54V9.8c0-2.5 1.49-3.89 3.78-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56V12h2.78l-.44 2.89h-2.34v6.99A10 10 0 0022 12z"/></svg>

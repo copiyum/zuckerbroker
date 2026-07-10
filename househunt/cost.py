@@ -19,6 +19,11 @@ PRICES: dict[str, tuple[float, float]] = {
     "MiniMax-Text-01": (0.20, 1.10),
     # Local on-device MLX (free)
     "Qwen2.5-3B-Instruct-4bit": (0.0, 0.0),
+    # Vertex AI Gemini (approx — verify on the GCP Vertex AI pricing page)
+    "gemini-2.5-flash": (0.15, 0.60),
+    "gemini-2.5-flash-lite": (0.075, 0.30),
+    "gemini-2.0-flash": (0.10, 0.40),
+    "gemini-1.5-flash": (0.075, 0.30),
 }
 
 

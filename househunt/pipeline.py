@@ -146,7 +146,8 @@ def extract(cfg: Config, workers: int = 4) -> int:
 
 def _apply_overrides(cfg: Config, db_path: str | None, images: str | None) -> Config:
     return Config(cfg.llm_base_url, cfg.llm_api_key, cfg.llm_model,
-                  db_path or cfg.db_path, images or cfg.images_dir, cfg.llm_backend)
+                  db_path or cfg.db_path, images or cfg.images_dir, cfg.llm_backend,
+                  cfg.vertex_project_id, cfg.vertex_location)
 
 
 def main(argv=None) -> None:

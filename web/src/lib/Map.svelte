@@ -1,32 +1,46 @@
 <script>
   import { onMount } from "svelte";
   import maplibregl from "maplibre-gl";
+  import MapboxDraw from "@mapbox/mapbox-gl-draw";
   import { store, getListings } from "./data.svelte.js";
 
-  let { onlist, onpin, onhover, selectedId = null, hoverId = null, theme = "light" } = $props();
+  let { 
+    onlist, onpin, onhover, selectedId = null, hoverId = null, 
+    theme = "light", drawMode = false, viewMode = "map" 
+  } = $props();
   let map;
   const STYLES = {
     light: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
     dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
   };
-  let appliedTheme = theme;
+  let appliedTheme = null;
 
-  // compact money: 30000 -> ₹30k, 125000 -> ₹1.3L
   const pill = (n) =>
     n == null ? "—"
     : n >= 100000 ? "₹" + (n / 100000).toFixed(n % 100000 ? 1 : 0) + "L"
     : n >= 1000 ? "₹" + Math.round(n / 1000) + "k"
     : "₹" + n;
 
-  function bbox() { const b = map.getBounds(); return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]; }
+  function bbox() { 
+    const b = map.getBounds(); 
+    return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]; 
+  }
+  
   function gj(list) {
-    return { type: "FeatureCollection", features: list.map((l) => ({
-      type: "Feature", geometry: { type: "Point", coordinates: [l.lng, l.lat] },
-      properties: { id: l.id, label: pill(l.rent) } })) };
+    return { 
+      type: "FeatureCollection", 
+      features: list.map(function(l) {
+        return {
+          type: "Feature", geometry: { type: "Point", coordinates: [l.lng, l.lat] },
+          properties: { id: l.id, label: pill(l.rent) }
+        };
+      })
+    };
   }
 
-  const markers = {};          // key -> { marker, el }
+  const markers = {};
   let onScreen = {};
+  let drawControl = null;
 
   function priceEl(id, label) {
     const el = document.createElement("div");
@@ -38,6 +52,7 @@
     el.addEventListener("mouseleave", () => onhover?.(null));
     return el;
   }
+  
   function clusterEl(cid, count, coords) {
     const el = document.createElement("div");
     el.className = "clus";
@@ -78,19 +93,50 @@
     applyStates();
   }
 
-  // map move updates only the in-view list (sidebar) + source; never selects/pans (smooth)
   function refresh() {
     store.list = getListings(bbox(), store.filters);
     map.getSource("listings")?.setData(gj(store.list));
     onlist?.(store.list);
   }
+  
   export function flyTo(l) { if (l && map) map.flyTo({ center: [l.lng, l.lat], zoom: Math.max(map.getZoom(), 15), speed: 0.9 }); }
   export function applyFiltersNow() { if (map && map.loaded()) refresh(); }
+  
+  export function setDrawMode(on) {
+    if (!map) return;
+    if (on && !drawControl) {
+      drawControl = new MapboxDraw({
+        displayControlsDefault: false,
+        controls: { polygon: true, trash: true },
+      });
+      map.addControl(drawControl, "top-left");
+      map.on("draw.create", (e) => {
+        const polygon = e.features[0].geometry.coordinates[0];
+        store.drawFilter = polygon;
+        refresh();
+      });
+      map.on("draw.update", (e) => {
+        const polygon = e.features[0].geometry.coordinates[0];
+        store.drawFilter = polygon;
+        refresh();
+      });
+      map.on("draw.delete", () => {
+        store.drawFilter = null;
+        refresh();
+      });
+    } else if (!on && drawControl) {
+      map.removeControl(drawControl);
+      drawControl = null;
+      if (store.drawFilter) {
+        store.drawFilter = null;
+        refresh();
+      }
+    }
+  }
 
   let t;
   const debounce = () => { clearTimeout(t); t = setTimeout(refresh, 200); };
 
-  // source + invisible tiling layer (re-added after every setStyle, which wipes them)
   function ensureSource() {
     if (map.getSource("listings")) return;
     map.addSource("listings", { type: "geojson", data: gj(store.list), cluster: true, clusterRadius: 60, clusterMaxZoom: 14 });
@@ -98,16 +144,15 @@
   }
 
   $effect(() => { selectedId; hoverId; if (map) applyStates(); });
-  // re-render the source once listings.json finishes loading (data arrives after map 'load')
   $effect(() => { if (store.all.length && map && map.getSource("listings")) refresh(); });
-  // light/dark switch — setStyle wipes sources, so re-add + refresh on style.load
   $effect(() => {
-    const t = theme;                          // read first so it's always tracked
+    const t = theme;
     if (!map || t === appliedTheme) return;
     appliedTheme = t;
     map.setStyle(STYLES[t]);
     map.once("style.load", () => { ensureSource(); refresh(); });
   });
+  $effect(() => { if (map) setDrawMode(drawMode); });
 
   onMount(() => {
     map = new maplibregl.Map({ container: "map", style: STYLES[theme], center: [77.62, 12.95], zoom: 11 });

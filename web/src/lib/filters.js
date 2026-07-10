@@ -9,8 +9,22 @@ function furnishClass(l) {
   if (s.includes("furnish")) return "furnished";
   return null;
 }
-export function applyFilters(list, f = {}) {
+/* Ray-casting point-in-polygon test */
+export function pointInPolygon([lng, lat], polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i], [xj, yj] = polygon[j];
+    if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi)
+      inside = !inside;
+  }
+  return inside;
+}
+
+export function applyFilters(list, f = {}, drawFilter = null) {
   return list.filter((l) => {
+    if (drawFilter) {
+      if (!pointInPolygon([l.lng, l.lat], drawFilter)) return false;
+    }
     if (f.rentMin != null && (l.rent == null || l.rent < f.rentMin)) return false;
     if (f.rentMax != null && (l.rent == null || l.rent > f.rentMax)) return false;
     if (f.bhk && f.bhk.length) {
